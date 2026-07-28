@@ -7,6 +7,7 @@ background-theory baseline, not a claim that stable cyclic solutions exist.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from numbers import Integral
 from typing import Any, Literal
 
 import numpy as np
@@ -31,6 +32,8 @@ class PeriodicPotential:
     target_space: Literal["real", "circle"] = "real"
 
     def __post_init__(self) -> None:
+        if isinstance(self.strata_count, bool) or not isinstance(self.strata_count, Integral):
+            raise ValueError("strata_count must be an integer")
         if self.amplitude < 0 or self.field_scale <= 0 or self.strata_count < 1:
             raise ValueError("Potential parameters are outside their allowed domain")
         if self.target_space not in ("real", "circle"):
