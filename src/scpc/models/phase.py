@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from numbers import Integral
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import numpy as np
 import xarray as xr
@@ -83,6 +83,41 @@ class SCPCParameters:
         return self.rho_r_ref * (self.a_ref / np.asarray(a, dtype=float)) ** 4
 
 
+@dataclass(frozen=True)
+class SCPCIntegrationDomain:
+    """Declared numerical/physical domain boundaries for one background run.
+
+    Reaching one of these limits terminates the integration at a root-localized
+    event. A limit is a declared analysis boundary, not a singularity claim.
+    """
+
+    min_scale_factor: float | None = None
+    max_scale_factor: float | None = None
+    max_total_density: float | None = None
+    max_abs_hubble: float | None = None
+    max_abs_ricci_scalar: float | None = None
+    max_abs_field: float | None = None
+    max_abs_field_velocity: float | None = None
+
+    def __post_init__(self) -> None:
+        for name, value in asdict(self).items():
+            if value is not None and (not np.isfinite(value) or value <= 0.0):
+                raise ValueError(f"{name} must be finite and positive when configured")
+        if (
+            self.min_scale_factor is not None
+            and self.max_scale_factor is not None
+            and self.min_scale_factor >= self.max_scale_factor
+        ):
+            raise ValueError("min_scale_factor must be smaller than max_scale_factor")
+
+    def validate_for(self, parameters: SCPCParameters) -> None:
+        if self.max_abs_field is not None and parameters.potential.target_space == "circle":
+            raise ValueError(
+                "max_abs_field is coordinate-dependent on a circular target; "
+                "use an invariant compact-target criterion instead"
+            )
+
+
 @dataclass
 class SCPCSolution:
     t: np.ndarray
@@ -100,8 +135,45 @@ class SCPCSolution:
     parameters: SCPCParameters
     solver_metadata: dict[str, Any]
     turning_state_vectors: np.ndarray | None = None
+    termination_kind: str | None = None
+    termination_time: float | None = None
+    termination_state_vector: np.ndarray | None = None
+    termination_threshold: float | None = None
+    termination_observed: float | None = None
+    termination_units: str | None = None
+    requested_end_time: float | None = None
+
+    @property
+    def completed_to_requested_end(self) -> bool:
+        if self.requested_end_time is None or self.t.size == 0:
+            return self.termination_kind is None
+        scale = max(1.0, abs(float(self.requested_end_time)))
+        return self.termination_kind is None and np.isclose(
+            float(self.t[-1]),
+            float(self.requested_end_time),
+            rtol=0.0,
+            atol=64.0 * np.finfo(float).eps * scale,
+        )
 
     def to_xarray(self) -> xr.Dataset:
+        attrs: dict[str, Any] = {
+            "model": "canonical_scpc_phase_baseline",
+            "unit_system": "natural units c=hbar=M_pl=1",
+            "max_abs_constraint_residual": float(np.max(np.abs(self.constraint_residual))),
+            "parameters": str(asdict(self.parameters)),
+            "completed_to_requested_end": self.completed_to_requested_end,
+            **self.solver_metadata,
+        }
+        if self.termination_kind is not None:
+            attrs.update(
+                {
+                    "termination_kind": self.termination_kind,
+                    "termination_threshold": float(self.termination_threshold),
+                    "termination_observed": float(self.termination_observed),
+                    "termination_units": str(self.termination_units),
+                }
+            )
+
         dataset = xr.Dataset(
             data_vars={
                 "scale_factor": ("time", self.a, {"units": "1"}),
@@ -115,13 +187,7 @@ class SCPCSolution:
                 "friedmann_constraint_residual": ("time", self.constraint_residual, {"units": "1"}),
             },
             coords={"time": ("time", self.t, {"units": "M_pl^-1"})},
-            attrs={
-                "model": "canonical_scpc_phase_baseline",
-                "unit_system": "natural units c=hbar=M_pl=1",
-                "max_abs_constraint_residual": float(np.max(np.abs(self.constraint_residual))),
-                "parameters": str(asdict(self.parameters)),
-                **self.solver_metadata,
-            },
+            attrs=attrs,
         )
 
         if self.turning_state_vectors is not None:
@@ -150,6 +216,24 @@ class SCPCSolution:
                     kind_codes,
                     {"codes": "1=bounce,-1=turnaround,0=degenerate"},
                 )
+
+        if self.termination_kind is not None:
+            if self.termination_time is None or self.termination_state_vector is None:
+                raise ValueError("Terminated solutions require exact termination time and state")
+            state = np.asarray(self.termination_state_vector, dtype=float)
+            if state.shape != (4,):
+                raise ValueError("termination_state_vector must have shape (4,)")
+            dataset["termination_time"] = xr.DataArray(
+                float(self.termination_time),
+                attrs={"units": "M_pl^-1"},
+            )
+            dataset["termination_scale_factor"] = xr.DataArray(state[0], attrs={"units": "1"})
+            dataset["termination_hubble"] = xr.DataArray(state[1], attrs={"units": "M_pl"})
+            dataset["termination_field"] = xr.DataArray(state[2], attrs={"units": "M_pl"})
+            dataset["termination_field_velocity"] = xr.DataArray(
+                state[3],
+                attrs={"units": "M_pl^2"},
+            )
         return dataset
 
 
@@ -196,6 +280,135 @@ def _rhs(_t: float, y: np.ndarray, p: SCPCParameters) -> np.ndarray:
     )
 
 
+def _total_density(state: np.ndarray, parameters: SCPCParameters) -> float:
+    a, _H, phi, v = state
+    rho_m, rho_r, rho_phi, _ = _components(
+        np.asarray(a), np.asarray(phi), np.asarray(v), parameters
+    )
+    return float(rho_m + rho_r + rho_phi)
+
+
+def _ricci_scalar(state: np.ndarray, parameters: SCPCParameters) -> float:
+    a, H, _phi, _v = state
+    hdot = float(_rhs(0.0, state, parameters)[1])
+    return float(6.0 * (hdot + 2.0 * H**2 + parameters.spatial_curvature_k / a**2))
+
+
+@dataclass(frozen=True)
+class _DomainEventDefinition:
+    kind: str
+    threshold: float
+    units: str
+    observed: Callable[[np.ndarray], float]
+    residual: Callable[[np.ndarray], float]
+
+
+def _domain_event_definitions(
+    domain: SCPCIntegrationDomain,
+    parameters: SCPCParameters,
+) -> tuple[_DomainEventDefinition, ...]:
+    domain.validate_for(parameters)
+    definitions: list[_DomainEventDefinition] = []
+
+    def add(
+        kind: str,
+        threshold: float | None,
+        units: str,
+        observed: Callable[[np.ndarray], float],
+        residual: Callable[[np.ndarray], float],
+    ) -> None:
+        if threshold is not None:
+            definitions.append(
+                _DomainEventDefinition(
+                    kind=kind,
+                    threshold=float(threshold),
+                    units=units,
+                    observed=observed,
+                    residual=residual,
+                )
+            )
+
+    add(
+        "minimum_scale_factor",
+        domain.min_scale_factor,
+        "1",
+        lambda state: float(state[0]),
+        lambda state: float(state[0] - domain.min_scale_factor),
+    )
+    add(
+        "maximum_scale_factor",
+        domain.max_scale_factor,
+        "1",
+        lambda state: float(state[0]),
+        lambda state: float(domain.max_scale_factor - state[0]),
+    )
+    add(
+        "maximum_total_density",
+        domain.max_total_density,
+        "M_pl^4",
+        lambda state: _total_density(state, parameters),
+        lambda state: float(domain.max_total_density - _total_density(state, parameters)),
+    )
+    add(
+        "maximum_absolute_hubble",
+        domain.max_abs_hubble,
+        "M_pl",
+        lambda state: abs(float(state[1])),
+        lambda state: float(domain.max_abs_hubble - abs(state[1])),
+    )
+    add(
+        "maximum_absolute_ricci_scalar",
+        domain.max_abs_ricci_scalar,
+        "M_pl^2",
+        lambda state: abs(_ricci_scalar(state, parameters)),
+        lambda state: float(domain.max_abs_ricci_scalar - abs(_ricci_scalar(state, parameters))),
+    )
+    add(
+        "maximum_absolute_field",
+        domain.max_abs_field,
+        "M_pl",
+        lambda state: abs(float(state[2])),
+        lambda state: float(domain.max_abs_field - abs(state[2])),
+    )
+    add(
+        "maximum_absolute_field_velocity",
+        domain.max_abs_field_velocity,
+        "M_pl^2",
+        lambda state: abs(float(state[3])),
+        lambda state: float(domain.max_abs_field_velocity - abs(state[3])),
+    )
+    return tuple(definitions)
+
+
+def _make_terminal_event(definition: _DomainEventDefinition):
+    def event(_t: float, state: np.ndarray) -> float:
+        return definition.residual(state)
+
+    event.terminal = True  # type: ignore[attr-defined]
+    event.direction = -1  # type: ignore[attr-defined]
+    return event
+
+
+def _append_exact_endpoint(
+    times: np.ndarray,
+    states: np.ndarray,
+    event_time: float,
+    event_state: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    scale = max(1.0, abs(event_time))
+    tolerance = 64.0 * np.finfo(float).eps * scale
+    if times.size and np.isclose(times[-1], event_time, rtol=0.0, atol=tolerance):
+        exact_times = times.copy()
+        exact_states = states.copy()
+        exact_times[-1] = event_time
+        exact_states[:, -1] = event_state
+        return exact_times, exact_states
+    return (
+        np.concatenate((times, np.asarray([event_time]))),
+        np.concatenate((states, np.asarray(event_state, dtype=float)[:, None]), axis=1),
+    )
+
+
 def integrate_scpc(
     parameters: SCPCParameters,
     *,
@@ -208,34 +421,73 @@ def integrate_scpc(
     rtol: float = 1e-9,
     atol: float = 1e-11,
     method: str = "DOP853",
+    domain: SCPCIntegrationDomain | None = None,
 ) -> SCPCSolution:
-    """Integrate the homogeneous canonical SCPC baseline and monitor H=0 events."""
+    """Integrate the homogeneous baseline with turning and domain events."""
 
     H0 = initial_hubble(a0, phi0, phi_dot0, parameters, branch)
+    initial_state = np.asarray([a0, H0, phi0, phi_dot0], dtype=float)
     t_eval = np.linspace(t_span[0], t_span[1], samples)
 
-    def turning_event(t: float, y: np.ndarray) -> float:
-        del t
-        return float(y[1])
+    def turning_event(_t: float, state: np.ndarray) -> float:
+        return float(state[1])
 
     turning_event.terminal = False  # type: ignore[attr-defined]
     turning_event.direction = 0  # type: ignore[attr-defined]
 
+    definitions = _domain_event_definitions(domain, parameters) if domain is not None else ()
+    for definition in definitions:
+        initial_residual = definition.residual(initial_state)
+        if not np.isfinite(initial_residual) or initial_residual <= 0.0:
+            raise ValueError(
+                f"Initial state is outside integration domain {definition.kind}: "
+                f"observed={definition.observed(initial_state)}, threshold={definition.threshold}"
+            )
+    events = [turning_event, *[_make_terminal_event(definition) for definition in definitions]]
+
     sol = solve_ivp(
         lambda t, y: _rhs(t, y, parameters),
         t_span,
-        np.asarray([a0, H0, phi0, phi_dot0], dtype=float),
+        initial_state,
         t_eval=t_eval,
         method=method,
         rtol=rtol,
         atol=atol,
-        events=turning_event,
+        events=events,
         dense_output=True,
     )
     if not sol.success:
         raise RuntimeError(f"Background integration failed: {sol.message}")
 
-    a, H, phi, v = sol.y
+    termination_kind: str | None = None
+    termination_time: float | None = None
+    termination_state: np.ndarray | None = None
+    termination_threshold: float | None = None
+    termination_observed: float | None = None
+    termination_units: str | None = None
+    terminated_events: list[tuple[float, int, np.ndarray]] = []
+    for event_index, definition in enumerate(definitions, start=1):
+        event_times = sol.t_events[event_index]
+        event_states = sol.y_events[event_index]
+        if len(event_times):
+            terminated_events.append((float(event_times[0]), event_index - 1, np.asarray(event_states[0])))
+    if terminated_events:
+        termination_time, definition_index, termination_state = min(
+            terminated_events,
+            key=lambda item: item[0],
+        )
+        definition = definitions[definition_index]
+        termination_kind = definition.kind
+        termination_threshold = definition.threshold
+        termination_observed = definition.observed(termination_state)
+        termination_units = definition.units
+
+    times = np.asarray(sol.t, dtype=float)
+    states = np.asarray(sol.y, dtype=float)
+    if termination_time is not None and termination_state is not None:
+        times, states = _append_exact_endpoint(times, states, termination_time, termination_state)
+
+    a, H, phi, v = states
     rho_m, rho_r, rho_phi, p_phi = _components(a, phi, v, parameters)
     lhs = H**2 + parameters.spatial_curvature_k / a**2
     rhs = (rho_m + rho_r + rho_phi) / 3.0
@@ -256,7 +508,7 @@ def integrate_scpc(
         kinds.append("bounce" if hdot > 0 else "turnaround" if hdot < 0 else "degenerate")
 
     return SCPCSolution(
-        t=sol.t,
+        t=times,
         a=a,
         H=H,
         phi=phi,
@@ -275,6 +527,16 @@ def integrate_scpc(
             "solver_atol": atol,
             "solver_nfev": int(sol.nfev),
             "solver_status": int(sol.status),
+            "requested_end_time": float(t_span[1]),
+            "reached_end_time": float(times[-1]),
+            "integration_domain": str(asdict(domain)) if domain is not None else "{}",
         },
         turning_state_vectors=event_states,
+        termination_kind=termination_kind,
+        termination_time=termination_time,
+        termination_state_vector=termination_state,
+        termination_threshold=termination_threshold,
+        termination_observed=termination_observed,
+        termination_units=termination_units,
+        requested_end_time=float(t_span[1]),
     )
