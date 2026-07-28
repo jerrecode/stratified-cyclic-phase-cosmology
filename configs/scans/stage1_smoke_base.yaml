@@ -1,0 +1,26 @@
+schema_version: 1
+description: Fast closed-FLRW baseline for Stage 1 scan integration tests.
+model:
+  background:
+    spatial_curvature_k: 1
+    rho_m_ref: 0.03
+    rho_r_ref: 0.0001
+    a_ref: 1.0
+  potential:
+    offset: 3.5
+    amplitude: 0.0
+    strata_count: 4
+    field_scale: 1.0
+    target_space: real
+initial_conditions:
+  a: 1.0
+  phi: 0.15
+  phi_dot: 0.0
+  branch: 1
+run:
+  t_start: 0.0
+  t_end: 1.0
+  samples: 101
+  method: DOP853
+  rtol: 1.0e-9
+  atol: 1.0e-11
