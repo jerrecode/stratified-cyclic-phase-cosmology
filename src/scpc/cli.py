@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 
 from scpc.data.manifest import select_products, validate_manifest
 from scpc.workflows import compare_models, run_scpc_background, verify_scpc_background
@@ -58,7 +60,10 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "run-background":
         print(run_scpc_background(args.config, args.output))
     elif args.command == "verify-background":
-        print(verify_scpc_background(args.config, args.output))
+        report_path = verify_scpc_background(args.config, args.output)
+        print(report_path)
+        report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+        return 0 if report["passed"] else 2
     else:  # pragma: no cover
         raise RuntimeError(f"Unhandled command: {args.command}")
     return 0
