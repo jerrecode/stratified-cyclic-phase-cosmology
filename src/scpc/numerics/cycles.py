@@ -34,18 +34,20 @@ class CycleReturnMetric:
     start_time: float
     end_time: float
     period: float
+    target_space: str
     relative_scale_factor_error: float
-    wrapped_phase_error: float
+    field_error: float
+    field_winding: int
     relative_field_velocity_error: float
     maximum_error: float
 
 
-def wrapped_phase_difference(phi_a: float, phi_b: float, period: float) -> float:
-    """Return the signed shortest separation on a periodic field domain."""
+def wrapped_phase_difference(phi_a: float, phi_b: float, circumference: float) -> float:
+    """Return the signed shortest separation on an explicitly circular target."""
 
-    if not np.isfinite(period) or period <= 0.0:
-        raise ValueError("period must be finite and positive")
-    return float((phi_b - phi_a + 0.5 * period) % period - 0.5 * period)
+    if not np.isfinite(circumference) or circumference <= 0.0:
+        raise ValueError("circumference must be finite and positive")
+    return float((phi_b - phi_a + 0.5 * circumference) % circumference - 0.5 * circumference)
 
 
 def turning_states(solution: SCPCSolution) -> tuple[TurningState, ...]:
@@ -88,6 +90,24 @@ def turning_states(solution: SCPCSolution) -> tuple[TurningState, ...]:
     return tuple(states)
 
 
+def _field_return_error(
+    previous: float,
+    current: float,
+    solution: SCPCSolution,
+) -> tuple[float, int]:
+    potential = solution.parameters.potential
+    displacement = current - previous
+    if potential.target_space == "real":
+        return abs(displacement) / potential.potential_period, 0
+
+    circumference = potential.target_circumference
+    if circumference is None:  # pragma: no cover - protected by target-space validation
+        raise RuntimeError("Circular target space has no circumference")
+    wrapped = wrapped_phase_difference(previous, current, circumference)
+    winding = int(np.rint((displacement - wrapped) / circumference))
+    return abs(wrapped) / potential.potential_period, winding
+
+
 def cycle_return_metrics(
     solution: SCPCSolution,
     *,
@@ -96,21 +116,17 @@ def cycle_return_metrics(
 ) -> tuple[CycleReturnMetric, ...]:
     """Compare consecutive turning states of the same kind.
 
-    The field mismatch is wrapped by the period of the stratification
-    potential, so two states separated by an integer number of strata periods
-    are treated as topologically equivalent in the compact phase coordinate.
+    Real scalar fields retain their full displacement even when the potential
+    is periodic. A circular target space must be declared explicitly; only a
+    full target circumference is then identified, and nonzero winding is
+    recorded rather than hidden.
     """
 
     if relative_floor <= 0.0:
         raise ValueError("relative_floor must be positive")
 
     selected = [state for state in turning_states(solution) if kind is None or state.kind == kind]
-    field_period = (
-        2.0
-        * np.pi
-        * solution.parameters.potential.field_scale
-        / solution.parameters.potential.strata_count
-    )
+    target_space = solution.parameters.potential.target_space
 
     metrics: list[CycleReturnMetric] = []
     previous_by_kind: dict[str, TurningState] = {}
@@ -127,21 +143,21 @@ def cycle_return_metrics(
         scale_error = abs(current.scale_factor - previous.scale_factor) / max(
             abs(current.scale_factor), abs(previous.scale_factor), relative_floor
         )
-        phase_error = abs(
-            wrapped_phase_difference(previous.field, current.field, field_period)
-        ) / field_period
+        field_error, field_winding = _field_return_error(previous.field, current.field, solution)
         velocity_error = abs(current.field_velocity - previous.field_velocity) / max(
             abs(current.field_velocity), abs(previous.field_velocity), relative_floor
         )
-        maximum_error = max(scale_error, phase_error, velocity_error)
+        maximum_error = max(scale_error, field_error, velocity_error)
         metrics.append(
             CycleReturnMetric(
                 kind=current.kind,
                 start_time=previous.time,
                 end_time=current.time,
                 period=period,
+                target_space=target_space,
                 relative_scale_factor_error=float(scale_error),
-                wrapped_phase_error=float(phase_error),
+                field_error=float(field_error),
+                field_winding=field_winding,
                 relative_field_velocity_error=float(velocity_error),
                 maximum_error=float(maximum_error),
             )
@@ -164,8 +180,13 @@ def classify_recurrence(
     errors = np.asarray([metric.maximum_error for metric in metrics], dtype=float)
     if np.any(~np.isfinite(errors)):
         return "invalid_return_metric"
+    has_winding = any(metric.field_winding != 0 for metric in metrics)
     if np.all(errors <= tolerance):
-        return "recurrent_candidate"
+        return "winding_recurrence_candidate" if has_winding else "recurrent_candidate"
     if errors.size >= 2 and errors[-1] < errors[0] and errors[-1] <= 10.0 * tolerance:
-        return "converging_recurrence_candidate"
+        return (
+            "converging_winding_recurrence_candidate"
+            if has_winding
+            else "converging_recurrence_candidate"
+        )
     return "nonrecurrent_or_drifting"
