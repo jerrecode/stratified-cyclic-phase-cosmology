@@ -1,0 +1,11 @@
+\section{Numerical methods and verification}
+\label{sec:numerics}
+
+The background system is integrated with adaptive high-order ordinary differential equation solvers. Bounce and turnaround events are defined by directed zero crossings of $H$. The primary constraint diagnostic is
+\begin{equation}
+\epsilon_F(t)=\frac{3\Mpl^2(H^2+k/a^2)-\rho_{\mathrm{tot}}}
+{\max(|\rho_{\mathrm{tot}}|,\rho_\star)}.
+\end{equation}
+Every reported trajectory must include the maximum and root-mean-square residual, solver tolerances, method, step controls, software version, configuration checksum, and convergence comparison. Non-finite states, non-positive scale factors, or unconverged constraints invalidate a run.
+
+The initial implementation stores labeled trajectories in NetCDF and a compact CSV interoperability export. Publication figures are generated from stored results rather than from hidden notebook state.

@@ -7,23 +7,9 @@
   "additionalProperties": false,
   "properties": {
     "manifest_version": {"type": "string"},
-    "metadata": {
-      "type": "object",
-      "required": ["title", "updated", "scope"],
-      "properties": {
-        "title": {"type": "string"},
-        "updated": {"type": "string", "format": "date"},
-        "scope": {"type": "string"},
-        "maintainer": {"type": "string"}
-      },
-      "additionalProperties": true
-    },
+    "metadata": {"type": "object", "required": ["title", "updated", "scope"], "additionalProperties": true},
     "conventions": {"type": "object"},
-    "releases": {
-      "type": "array",
-      "minItems": 1,
-      "items": {"$ref": "#/$defs/release"}
-    }
+    "releases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/release"}}
   },
   "$defs": {
     "access": {
@@ -45,7 +31,7 @@
       "required": ["name", "unit", "dimensions", "description"],
       "properties": {
         "name": {"type": "string"},
-        "symbol": {"type": "string"},
+        "symbol": {},
         "unit": {"type": "string"},
         "dimensions": {"type": "string"},
         "coordinates": {"type": "array", "items": {"type": "string"}},

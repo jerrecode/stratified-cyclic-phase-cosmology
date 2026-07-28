@@ -1,0 +1,13 @@
+\section{Observational data and inference architecture}
+\label{sec:data}
+
+The repository contains a versioned machine-readable registry of public CMB, BAO, supernova, weak-lensing, large-scale-structure, and gravitational-wave releases. Each entry records access semantics, product roles, variables, units, dimensions, resolution, documentation, and citation requirements. Compact likelihoods and covariance products form the default inference tier; large maps and catalogs are optional validation inputs.
+
+The intended pipeline is
+\begin{equation}
+\bm\theta\rightarrow H(a)\rightarrow
+\{\mathcal{P}_{\mathcal R}(k),\mathcal{P}_T(k)\}
+\rightarrow\{C_\ell,P(k),D_L(z),f\sigma_8,\Omega_{\mathrm{GW}}(f)\}
+\rightarrow\mathcal{L}(\bm\theta).
+\end{equation}
+Boltzmann observables should be implemented through a validated interface to CLASS or an equivalent independent solver \citep{blas2011class}. Bayesian inference and likelihood composition are planned through Cobaya-compatible components \citep{torrado2021cobaya}.
