@@ -13,13 +13,14 @@ from .cycles import (
     turning_states,
     wrapped_phase_difference,
 )
-from .provenance import build_provenance, sha256_file
+from .provenance import build_output_inventory, build_provenance, sha256_file
 
 __all__ = [
     "ConvergenceResult",
     "CycleReturnMetric",
     "SolutionDifference",
     "TurningState",
+    "build_output_inventory",
     "build_provenance",
     "classify_recurrence",
     "compare_solutions",
