@@ -9,6 +9,8 @@ steps:
     command: pytest
   - id: reproduce-products
     command: python scripts/reproduce.py
+  - id: verify-background
+    command: scpc verify-background
   - id: build-paper
     command: latexmk -pdf -cd paper/main.tex
 outputs:
@@ -17,4 +19,6 @@ outputs:
   - results/scpc_baseline/trajectory.nc
   - results/scpc_baseline/diagnostics.json
   - results/scpc_baseline/provenance.json
+  - results/scpc_verification/verification.json
+  - results/scpc_verification/provenance.json
   - paper/main.pdf
