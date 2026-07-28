@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from scpc.data.manifest import select_products, validate_manifest
+from scpc.scans.runner import run_background_scan
 from scpc.workflows import compare_models, run_scpc_background, verify_scpc_background
 
 
@@ -38,6 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify.add_argument("--config", default="configs/scpc_verification.yaml")
     verify.add_argument("--output", default="results/scpc_verification")
+
+    scan = sub.add_parser(
+        "scan-background",
+        help="Run or resume a deterministic failure-preserving background parameter scan",
+    )
+    scan.add_argument("--config", default="configs/scans/stage1_smoke.yaml")
+    scan.add_argument("--schema", default="configs/scans/scan.schema.json")
+    scan.add_argument("--output", default="results/stage1_smoke_scan")
     return parser
 
 
@@ -64,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
         print(report_path)
         report = json.loads(Path(report_path).read_text(encoding="utf-8"))
         return 0 if report["passed"] else 2
+    elif args.command == "scan-background":
+        print(run_background_scan(args.config, args.output, schema_path=args.schema))
     else:  # pragma: no cover
         raise RuntimeError(f"Unhandled command: {args.command}")
     return 0

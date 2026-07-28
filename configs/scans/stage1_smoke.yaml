@@ -1,0 +1,31 @@
+schema_version: 1
+description: Four-point deterministic smoke scan with valid and invalid initial constraints.
+base_config: stage1_smoke_base.yaml
+identity_namespace: scpc-background-v1
+max_runs: 4
+resume: true
+rerun_statuses: []
+axes:
+  model.potential.amplitude: [0.0, 0.08]
+  model.potential.offset: [0.5, 3.5]
+classification:
+  constraint_threshold: 1.0e-7
+  hubble_zero_tolerance: 1.0e-10
+  return_tolerance: 1.0e-3
+retention:
+  outcomes:
+    - monotonic_expansion
+    - monotonic_contraction
+    - recollapse_without_bounce
+    - one_off_bounce
+    - single_bounce_turnaround_pair
+    - repeated_turning_points
+  max_trajectories: 2
+visualization:
+  x_axis: model.potential.offset
+  y_axis: model.potential.amplitude
+  outcome_map: outcome_map.png
+  annotate: true
+notes:
+  - The low-offset points are expected to fail the initial Friedmann constraint.
+  - Failure records are part of the expected output and are not singularity claims.
