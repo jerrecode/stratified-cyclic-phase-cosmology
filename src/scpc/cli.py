@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run or resume a deterministic failure-preserving background parameter scan",
     )
     scan.add_argument("--config", default="configs/scans/stage1_smoke.yaml")
+    scan.add_argument("--schema", default="configs/scans/scan.schema.json")
     scan.add_argument("--output", default="results/stage1_smoke_scan")
     return parser
 
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         report = json.loads(Path(report_path).read_text(encoding="utf-8"))
         return 0 if report["passed"] else 2
     elif args.command == "scan-background":
-        print(run_background_scan(args.config, args.output))
+        print(run_background_scan(args.config, args.output, schema_path=args.schema))
     else:  # pragma: no cover
         raise RuntimeError(f"Unhandled command: {args.command}")
     return 0
