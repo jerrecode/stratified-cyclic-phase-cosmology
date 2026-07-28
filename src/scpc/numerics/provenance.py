@@ -8,6 +8,7 @@ import json
 import platform
 import subprocess
 import sys
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,34 @@ def sha256_file(path: str | Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def build_output_inventory(
+    paths: Iterable[str | Path],
+    *,
+    relative_to: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Describe generated files after they have been written.
+
+    The provenance file itself should not be included, because its checksum
+    would be self-referential. Paths are sorted for deterministic records.
+    """
+
+    root = Path(relative_to).resolve() if relative_to is not None else None
+    inventory: list[dict[str, Any]] = []
+    for raw_path in sorted((Path(path) for path in paths), key=lambda path: str(path)):
+        path = raw_path.resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Cannot inventory missing output file: {raw_path}")
+        display_path = str(path.relative_to(root)) if root is not None else str(raw_path)
+        inventory.append(
+            {
+                "path": display_path,
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            }
+        )
+    return inventory
 
 
 def _git_commit() -> str | None:
