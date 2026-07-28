@@ -1,0 +1,42 @@
+metadata:
+  id: scpc-closed-canonical-baseline-v1
+  title: Canonical closed-FLRW SCPC verification baseline
+  scientific_status: exploratory_baseline
+  units: reduced_planck_natural_units
+  description: >-
+    A conservative GR plus canonical stratification-field baseline. This
+    configuration verifies integration, event detection, and constraint
+    monitoring; it is not claimed to be an observationally calibrated cycle.
+
+model:
+  reduced_planck_mass: 1.0
+  curvature_k: 1
+  potential:
+    kind: periodic_stratified
+    amplitude: 0.20
+    offset: 3.20
+    periodicity: 3
+    field_scale: 1.0
+    tilt: 0.0
+
+initial_state:
+  scale_factor: 1.0
+  phi: 0.15
+  phi_dot: 0.0
+  rho_matter: 0.40
+  rho_radiation: 0.10
+  hubble_branch: expanding
+
+integration:
+  time_start: 0.0
+  time_end: 25.0
+  samples: 2500
+  method: DOP853
+  relative_tolerance: 1.0e-10
+  absolute_tolerance: 1.0e-12
+  max_step: 0.05
+
+acceptance:
+  maximum_absolute_relative_friedmann_residual: 1.0e-7
+  require_bounce: false
+  require_turnaround: false

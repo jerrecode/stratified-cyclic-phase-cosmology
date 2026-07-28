@@ -1,0 +1,48 @@
+metadata:
+  id: standardized-background-comparison-v1
+  description: >-
+    Dimensionless homogeneous expansion histories evaluated on one identical
+    scale-factor grid. Parameter values tagged illustrative are not fitted SCPC
+    results and must not be presented as observational constraints.
+
+grid:
+  coordinate: scale_factor
+  scale_factor_min: 0.01
+  scale_factor_max: 2.0
+  samples: 1200
+
+models:
+  - id: planck2018-flat-lcdm
+    label: Planck-2018-like flat Lambda-CDM
+    kind: lcdm
+    provenance: Planck 2018 baseline parameter summary
+    parameter_status: published_benchmark
+    parameters:
+      hubble_0_km_s_mpc: 67.36
+      omega_matter: 0.3153
+      omega_radiation: 0.000092
+      omega_curvature: 0.0
+
+  - id: curved-lcdm-illustrative
+    label: Curved Lambda-CDM illustrative
+    kind: lcdm
+    provenance: internal comparison configuration
+    parameter_status: illustrative_not_fit
+    parameters:
+      hubble_0_km_s_mpc: 67.36
+      omega_matter: 0.3153
+      omega_radiation: 0.000092
+      omega_curvature: -0.01
+
+  - id: cpl-dynamical-de-illustrative
+    label: CPL w0wa-CDM illustrative
+    kind: w0wa_cdm
+    provenance: internal comparison configuration
+    parameter_status: illustrative_not_fit
+    parameters:
+      hubble_0_km_s_mpc: 67.36
+      omega_matter: 0.3153
+      omega_radiation: 0.000092
+      omega_curvature: 0.0
+      w0: -0.8
+      wa: -0.8

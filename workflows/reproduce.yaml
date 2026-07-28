@@ -1,0 +1,18 @@
+workflow_version: 1
+id: reproduce-scpc-baseline
+steps:
+  - id: validate-data-manifest
+    command: scpc data validate
+  - id: run-tests
+    command: pytest
+  - id: simulate-baseline
+    command: scpc simulate configs/baseline/scpc_closed.yaml --output results/baseline
+  - id: compare-backgrounds
+    command: scpc compare configs/comparison/background_models.yaml --output results/model_comparison
+  - id: build-paper
+    command: make paper
+outputs:
+  - results/baseline/trajectory.nc
+  - results/baseline/diagnostics.json
+  - results/model_comparison/expansion_histories.csv
+  - paper/main.pdf
