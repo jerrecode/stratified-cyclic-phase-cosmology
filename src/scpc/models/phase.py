@@ -756,8 +756,8 @@ def integrate_scpc(
         all_turning_states = np.empty((0, 4), dtype=float)
     if all_turning_states.shape != (all_turning_times.size, 4):
         raise RuntimeError("Solver returned inconsistent turning-event state data")
-    event_tolerance = _event_tolerance(rtol, atol, max(1.0, abs(effective_end)))
-    keep = all_turning_times <= effective_end + event_tolerance
+    endpoint_slack = 64.0 * np.finfo(float).eps * max(1.0, abs(effective_end))
+    keep = all_turning_times <= effective_end + endpoint_slack
     event_times = all_turning_times[keep]
     event_states = all_turning_states[keep]
 

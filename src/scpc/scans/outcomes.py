@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -10,6 +11,7 @@ import numpy as np
 
 from scpc.models.phase import (
     DOMAIN_TERMINATION_KINDS,
+    SCPCIntegrationDomain,
     SCPCSolution,
     evaluate_domain_boundary,
 )
@@ -44,6 +46,16 @@ RETAINABLE_OUTCOMES = (
     OutcomeClass.SINGLE_BOUNCE_TURNAROUND_PAIR,
     OutcomeClass.REPEATED_TURNING_POINTS,
 )
+
+_DOMAIN_FIELD_TO_KIND = {
+    "min_scale_factor": "minimum_scale_factor",
+    "max_scale_factor": "maximum_scale_factor",
+    "max_total_density": "maximum_total_density",
+    "max_abs_hubble": "maximum_absolute_hubble",
+    "max_abs_ricci_scalar": "maximum_absolute_ricci_scalar",
+    "max_abs_field": "maximum_absolute_field",
+    "max_abs_field_velocity": "maximum_absolute_field_velocity",
+}
 
 
 @dataclass(frozen=True)
@@ -191,6 +203,60 @@ def _validate_boundary_record(
     }
 
 
+def _configured_coincident_boundaries(
+    solution: SCPCSolution,
+    state: np.ndarray,
+) -> tuple[dict[str, Any], ...]:
+    raw_domain = solution.solver_metadata.get("integration_domain")
+    if not isinstance(raw_domain, str):
+        raise ResultIntegrityError(
+            "Terminated solution is missing serialized integration-domain metadata"
+        )
+    try:
+        payload = json.loads(raw_domain)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ResultIntegrityError("Integration-domain metadata is not valid JSON") from error
+    if not isinstance(payload, dict):
+        raise ResultIntegrityError("Integration-domain metadata must decode to a mapping")
+    if any(
+        value is not None and isinstance(value, bool)
+        for value in payload.values()
+    ):
+        raise ResultIntegrityError("Integration-domain thresholds may not be boolean")
+    try:
+        domain = SCPCIntegrationDomain(**payload)
+        domain.validate_for(solution.parameters)
+    except (TypeError, ValueError) as error:
+        raise ResultIntegrityError("Integration-domain metadata is invalid") from error
+    if not domain.configured:
+        raise ResultIntegrityError(
+            "Terminated solution has no configured integration-domain surfaces"
+        )
+
+    expected: list[dict[str, Any]] = []
+    for field, value in asdict(domain).items():
+        if value is None:
+            continue
+        kind = _DOMAIN_FIELD_TO_KIND[field]
+        threshold = float(value)
+        observed, units = evaluate_domain_boundary(kind, state, solution.parameters)
+        tolerance = _event_tolerance(solution, max(abs(observed), abs(threshold)))
+        if abs(observed - threshold) <= tolerance:
+            expected.append(
+                {
+                    "kind": kind,
+                    "threshold": threshold,
+                    "observed": observed,
+                    "units": units,
+                }
+            )
+    if not expected:
+        raise ResultIntegrityError(
+            "No configured integration-domain surface matches the exact terminal state"
+        )
+    return tuple(sorted(expected, key=lambda boundary: str(boundary["kind"])))
+
+
 def _validate_termination_metadata(
     solution: SCPCSolution,
     arrays: tuple[np.ndarray, ...],
@@ -255,6 +321,27 @@ def _validate_termination_metadata(
         raise ResultIntegrityError(
             "Termination boundary records must be unique and lexically ordered"
         )
+
+    expected = _configured_coincident_boundaries(solution, state)
+    expected_kinds = tuple(boundary["kind"] for boundary in expected)
+    if kinds != expected_kinds:
+        raise ResultIntegrityError(
+            "Termination boundary set does not match configured coincident surfaces"
+        )
+    for supplied, configured in zip(validated, expected, strict=True):
+        tolerance = _event_tolerance(
+            solution,
+            max(abs(configured["observed"]), abs(configured["threshold"])),
+        )
+        if supplied["units"] != configured["units"]:
+            raise ResultIntegrityError(
+                f"Termination units for {supplied['kind']} do not match configured domain"
+            )
+        if abs(supplied["threshold"] - configured["threshold"]) > tolerance:
+            raise ResultIntegrityError(
+                f"Termination threshold for {supplied['kind']} does not match configured domain"
+            )
+
     primary = validated[0]
     primary_tolerance = _event_tolerance(
         solution,
