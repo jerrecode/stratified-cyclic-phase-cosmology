@@ -17,7 +17,7 @@ from scpc.models.phase import SCPCSolution
 
 @dataclass(frozen=True)
 class TurningState:
-    """Interpolated homogeneous state at a classified H=0 event."""
+    """Homogeneous state at a classified H=0 event."""
 
     time: float
     kind: str
@@ -49,23 +49,40 @@ def wrapped_phase_difference(phi_a: float, phi_b: float, period: float) -> float
 
 
 def turning_states(solution: SCPCSolution) -> tuple[TurningState, ...]:
-    """Interpolate the serialized trajectory at all detected turning events."""
+    """Return exact solver event states, with interpolation as legacy fallback."""
 
-    if len(solution.turning_times) != len(solution.turning_kinds):
+    event_count = len(solution.turning_times)
+    if event_count != len(solution.turning_kinds):
         raise ValueError("turning_times and turning_kinds must have equal length")
 
+    exact_states: np.ndarray | None = None
+    if solution.turning_state_vectors is not None:
+        exact_states = np.asarray(solution.turning_state_vectors, dtype=float)
+        if exact_states.shape != (event_count, 4):
+            raise ValueError("turning_state_vectors must have shape (events, 4)")
+
     states: list[TurningState] = []
-    for event_time, kind in zip(solution.turning_times, solution.turning_kinds, strict=True):
+    for index, (event_time, kind) in enumerate(
+        zip(solution.turning_times, solution.turning_kinds, strict=True)
+    ):
         time = float(event_time)
         if time < solution.t[0] or time > solution.t[-1]:
             raise ValueError(f"Turning event at t={time} lies outside the stored trajectory")
+        if exact_states is None:
+            scale_factor = float(np.interp(time, solution.t, solution.a))
+            field = float(np.interp(time, solution.t, solution.phi))
+            field_velocity = float(np.interp(time, solution.t, solution.phi_dot))
+        else:
+            scale_factor = float(exact_states[index, 0])
+            field = float(exact_states[index, 2])
+            field_velocity = float(exact_states[index, 3])
         states.append(
             TurningState(
                 time=time,
                 kind=kind,
-                scale_factor=float(np.interp(time, solution.t, solution.a)),
-                field=float(np.interp(time, solution.t, solution.phi)),
-                field_velocity=float(np.interp(time, solution.t, solution.phi_dot)),
+                scale_factor=scale_factor,
+                field=field,
+                field_velocity=field_velocity,
             )
         )
     return tuple(states)
