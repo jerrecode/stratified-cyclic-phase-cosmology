@@ -71,9 +71,10 @@ class SCPCSolution:
     turning_kinds: tuple[str, ...]
     parameters: SCPCParameters
     solver_metadata: dict[str, Any]
+    turning_state_vectors: np.ndarray | None = None
 
     def to_xarray(self) -> xr.Dataset:
-        return xr.Dataset(
+        dataset = xr.Dataset(
             data_vars={
                 "scale_factor": ("time", self.a, {"units": "1"}),
                 "hubble": ("time", self.H, {"units": "M_pl"}),
@@ -94,6 +95,34 @@ class SCPCSolution:
                 **self.solver_metadata,
             },
         )
+
+        if self.turning_state_vectors is not None:
+            states = np.asarray(self.turning_state_vectors, dtype=float)
+            if states.ndim != 2 or states.shape[1] != 4:
+                raise ValueError("turning_state_vectors must have shape (events, 4)")
+            if states.shape[0] != len(self.turning_times) or states.shape[0] != len(self.turning_kinds):
+                raise ValueError("Turning times, kinds, and state vectors must have equal lengths")
+            if states.shape[0] > 0:
+                kind_codes = np.asarray(
+                    [1 if kind == "bounce" else -1 if kind == "turnaround" else 0 for kind in self.turning_kinds],
+                    dtype=np.int8,
+                )
+                dataset = dataset.assign_coords(turning_event=np.arange(states.shape[0], dtype=int))
+                dataset["turning_time"] = ("turning_event", self.turning_times, {"units": "M_pl^-1"})
+                dataset["turning_scale_factor"] = ("turning_event", states[:, 0], {"units": "1"})
+                dataset["turning_hubble"] = ("turning_event", states[:, 1], {"units": "M_pl"})
+                dataset["turning_field"] = ("turning_event", states[:, 2], {"units": "M_pl"})
+                dataset["turning_field_velocity"] = (
+                    "turning_event",
+                    states[:, 3],
+                    {"units": "M_pl^2"},
+                )
+                dataset["turning_kind_code"] = (
+                    "turning_event",
+                    kind_codes,
+                    {"codes": "1=bounce,-1=turnaround,0=degenerate"},
+                )
+        return dataset
 
 
 def _components(a: np.ndarray, phi: np.ndarray, v: np.ndarray, p: SCPCParameters):
@@ -185,13 +214,18 @@ def integrate_scpc(
     scale = np.maximum(np.abs(rhs), 1e-15)
     residual = (lhs - rhs) / scale
 
-    event_times = sol.t_events[0] if sol.t_events else np.asarray([])
+    event_times = np.asarray(sol.t_events[0] if sol.t_events else [], dtype=float)
+    if sol.y_events and len(sol.y_events[0]) > 0:
+        event_states = np.asarray(sol.y_events[0], dtype=float)
+    else:
+        event_states = np.empty((0, 4), dtype=float)
+    if event_states.shape != (event_times.size, 4):
+        raise RuntimeError("Solver returned inconsistent turning-event state data")
+
     kinds: list[str] = []
-    if sol.sol is not None:
-        for event_time in event_times:
-            state = sol.sol(float(event_time))
-            hdot = _rhs(float(event_time), state, parameters)[1]
-            kinds.append("bounce" if hdot > 0 else "turnaround" if hdot < 0 else "degenerate")
+    for event_time, state in zip(event_times, event_states, strict=True):
+        hdot = _rhs(float(event_time), state, parameters)[1]
+        kinds.append("bounce" if hdot > 0 else "turnaround" if hdot < 0 else "degenerate")
 
     return SCPCSolution(
         t=sol.t,
@@ -204,7 +238,7 @@ def integrate_scpc(
         rho_phi=rho_phi,
         p_phi=p_phi,
         constraint_residual=residual,
-        turning_times=np.asarray(event_times),
+        turning_times=event_times,
         turning_kinds=tuple(kinds),
         parameters=parameters,
         solver_metadata={
@@ -214,4 +248,5 @@ def integrate_scpc(
             "solver_nfev": int(sol.nfev),
             "solver_status": int(sol.status),
         },
+        turning_state_vectors=event_states,
     )
