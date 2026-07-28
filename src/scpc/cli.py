@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from scpc.data.manifest import select_products, validate_manifest
-from scpc.workflows import compare_models, run_scpc_background
+from scpc.workflows import compare_models, run_scpc_background, verify_scpc_background
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +29,13 @@ def build_parser() -> argparse.ArgumentParser:
     background = sub.add_parser("run-background", help="Integrate the canonical SCPC background")
     background.add_argument("--config", default="configs/scpc_baseline.yaml")
     background.add_argument("--output", default="results/scpc_baseline")
+
+    verify = sub.add_parser(
+        "verify-background",
+        help="Run tolerance and cross-solver verification for the SCPC background",
+    )
+    verify.add_argument("--config", default="configs/scpc_verification.yaml")
+    verify.add_argument("--output", default="results/scpc_verification")
     return parser
 
 
@@ -50,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
         print(compare_models(args.config, args.output))
     elif args.command == "run-background":
         print(run_scpc_background(args.config, args.output))
+    elif args.command == "verify-background":
+        print(verify_scpc_background(args.config, args.output))
     else:  # pragma: no cover
         raise RuntimeError(f"Unhandled command: {args.command}")
     return 0
