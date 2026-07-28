@@ -27,6 +27,7 @@ from scpc.numerics.provenance import (
 from scpc.scans.grid import ScanPoint, expand_parameter_grid
 from scpc.scans.outcomes import assess_solution
 from scpc.scans.records import completed_run_record, failed_run_record
+from scpc.visualization.scans import plot_scan_outcome_map
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
@@ -126,6 +127,25 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     temporary.replace(path)
+
+
+def _configured_outcome_map(scan: dict[str, Any], output: Path, index_path: Path) -> Path | None:
+    visualization = scan.get("visualization")
+    if visualization is None:
+        return None
+    if not isinstance(visualization, dict):
+        raise TypeError("visualization must be a mapping")
+    filename = Path(str(visualization.get("outcome_map", "outcome_map.png")))
+    if filename.is_absolute() or ".." in filename.parts:
+        raise ValueError("visualization.outcome_map must remain inside the scan output directory")
+    destination = output / filename
+    return plot_scan_outcome_map(
+        index_path,
+        destination,
+        x_axis=str(visualization["x_axis"]),
+        y_axis=str(visualization["y_axis"]),
+        annotate=bool(visualization.get("annotate", True)),
+    )
 
 
 def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path:
@@ -251,7 +271,10 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
     if not summary_path.exists():
         _write_json_atomic(summary_path, _summary(rows, len(points)))
 
+    outcome_map_path = _configured_outcome_map(scan, output, index_path)
     output_files = [index_path, summary_path, metadata_path]
+    if outcome_map_path is not None:
+        output_files.append(outcome_map_path)
     if trajectories_dir.exists():
         output_files.extend(sorted(trajectories_dir.glob("*.nc")))
     provenance = build_provenance(
