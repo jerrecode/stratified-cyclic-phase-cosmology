@@ -88,8 +88,12 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
     solution.to_xarray().to_netcdf(dataset_path, engine="scipy")
 
     return_metrics = cycle_return_metrics(solution)
-    recurrence_tolerance = float(
-        config.get("acceptance", {}).get("max_cycle_return_error", 1.0e-3)
+    acceptance = config.get("acceptance", {})
+    return_tolerance = float(
+        acceptance.get(
+            "max_return_error",
+            acceptance.get("max_cycle_return_error", 1.0e-3),
+        )
     )
     diagnostics = {
         "max_abs_friedmann_constraint_residual": float(
@@ -98,11 +102,12 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
         "turning_times": solution.turning_times.tolist(),
         "turning_kinds": list(solution.turning_kinds),
         "cycle_return_metrics": [asdict(metric) for metric in return_metrics],
-        "recurrence_classification": classify_recurrence(
+        "return_sequence_classification": classify_recurrence(
             return_metrics,
-            tolerance=recurrence_tolerance,
+            tolerance=return_tolerance,
         ),
-        "recurrence_tolerance": recurrence_tolerance,
+        "return_tolerance": return_tolerance,
+        "recurrence_assessment": "not_performed_requires_repeated_converged_multi_solver_returns",
     }
     (output / "diagnostics.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
     plot_scpc_background(solution, output / "background.png")
