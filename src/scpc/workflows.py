@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import yaml
 
 from scpc.models.phase import PeriodicPotential, SCPCParameters, integrate_scpc
 from scpc.models.standard import ExpansionParameters, FLRWExpansion
+from scpc.numerics.cycles import classify_recurrence, cycle_return_metrics
 from scpc.numerics.provenance import build_provenance, write_provenance
 from scpc.visualization.backgrounds import plot_expansion_comparison, plot_scpc_background
 
@@ -71,12 +73,28 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
     )
     dataset_path = output / "trajectory.nc"
     solution.to_xarray().to_netcdf(dataset_path, engine="scipy")
+
+    return_metrics = cycle_return_metrics(solution)
+    recurrence_tolerance = float(
+        config.get("acceptance", {}).get("max_cycle_return_error", 1.0e-3)
+    )
     diagnostics = {
-        "max_abs_friedmann_constraint_residual": float(np.max(np.abs(solution.constraint_residual))),
+        "max_abs_friedmann_constraint_residual": float(
+            np.max(np.abs(solution.constraint_residual))
+        ),
         "turning_times": solution.turning_times.tolist(),
         "turning_kinds": list(solution.turning_kinds),
+        "cycle_return_metrics": [asdict(metric) for metric in return_metrics],
+        "recurrence_classification": classify_recurrence(
+            return_metrics,
+            tolerance=recurrence_tolerance,
+        ),
+        "recurrence_tolerance": recurrence_tolerance,
     }
     (output / "diagnostics.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
     plot_scpc_background(solution, output / "background.png")
-    write_provenance(output / "provenance.json", build_provenance(config_path, {"workflow": "run_scpc_background"}))
+    write_provenance(
+        output / "provenance.json",
+        build_provenance(config_path, {"workflow": "run_scpc_background"}),
+    )
     return dataset_path
