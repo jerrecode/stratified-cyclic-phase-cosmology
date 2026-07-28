@@ -8,7 +8,7 @@ from .convergence import (
 from .cycles import (
     CycleReturnMetric,
     TurningState,
-    classify_recurrence,
+    classify_return_sequences,
     cycle_return_metrics,
     turning_states,
     wrapped_phase_difference,
@@ -22,7 +22,7 @@ __all__ = [
     "TurningState",
     "build_output_inventory",
     "build_provenance",
-    "classify_recurrence",
+    "classify_return_sequences",
     "compare_solutions",
     "cycle_return_metrics",
     "run_cross_solver_comparison",
