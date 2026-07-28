@@ -17,7 +17,7 @@ from scpc.numerics.convergence import (
     run_cross_solver_comparison,
     run_tolerance_ladder,
 )
-from scpc.numerics.cycles import classify_recurrence, cycle_return_metrics
+from scpc.numerics.cycles import classify_return_sequences, cycle_return_metrics
 from scpc.numerics.provenance import (
     build_output_inventory,
     build_provenance,
@@ -113,7 +113,7 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
         "turning_times": solution.turning_times.tolist(),
         "turning_kinds": list(solution.turning_kinds),
         "cycle_return_metrics": [asdict(metric) for metric in return_metrics],
-        "return_sequence_classification": classify_recurrence(
+        "return_sequence_classifications": classify_return_sequences(
             return_metrics,
             tolerance=return_tolerance,
         ),
