@@ -16,7 +16,7 @@ class SolutionDifference:
 
     scale_factor: float
     hubble: float
-    wrapped_phase: float
+    field: float
     field_velocity: float
     maximum: float
 
@@ -47,9 +47,9 @@ def compare_solutions(
 ) -> SolutionDifference:
     """Compare two solutions sampled on the same time grid.
 
-    The scalar field is compared modulo the period of the stratification
-    potential. This avoids treating equivalent compact-phase representatives
-    as a large numerical disagreement.
+    Solver verification always compares the unwrapped scalar lift. Even for an
+    explicitly circular target, a disagreement by one circumference indicates
+    a different numerical trajectory or winding history and must not be hidden.
     """
 
     if relative_floor <= 0.0:
@@ -62,33 +62,30 @@ def compare_solutions(
     ):
         raise ValueError("Solutions must use an identical stored time grid")
 
-    reference_period = (
-        2.0
-        * np.pi
-        * reference.parameters.potential.field_scale
-        / reference.parameters.potential.strata_count
-    )
-    candidate_period = (
-        2.0
-        * np.pi
-        * candidate.parameters.potential.field_scale
-        / candidate.parameters.potential.strata_count
-    )
-    if not np.isclose(reference_period, candidate_period, rtol=1.0e-14, atol=0.0):
-        raise ValueError("Solutions use incompatible stratification-field periods")
+    reference_potential = reference.parameters.potential
+    candidate_potential = candidate.parameters.potential
+    if reference_potential.target_space != candidate_potential.target_space:
+        raise ValueError("Solutions use incompatible stratification-field target spaces")
+    if not np.isclose(
+        reference_potential.potential_period,
+        candidate_potential.potential_period,
+        rtol=1.0e-14,
+        atol=0.0,
+    ):
+        raise ValueError("Solutions use incompatible stratification-potential periods")
 
-    phase_delta = (
-        candidate.phi - reference.phi + 0.5 * reference_period
-    ) % reference_period - 0.5 * reference_period
     scale_error = _relative_linf(reference.a, candidate.a, relative_floor)
     hubble_error = _relative_linf(reference.H, candidate.H, relative_floor)
-    phase_error = float(np.max(np.abs(phase_delta))) / reference_period
+    field_error = float(np.max(np.abs(candidate.phi - reference.phi))) / max(
+        reference_potential.potential_period,
+        relative_floor,
+    )
     velocity_error = _relative_linf(reference.phi_dot, candidate.phi_dot, relative_floor)
-    maximum = max(scale_error, hubble_error, phase_error, velocity_error)
+    maximum = max(scale_error, hubble_error, field_error, velocity_error)
     return SolutionDifference(
         scale_factor=scale_error,
         hubble=hubble_error,
-        wrapped_phase=phase_error,
+        field=field_error,
         field_velocity=velocity_error,
         maximum=maximum,
     )
