@@ -61,9 +61,10 @@ def test_smoke_scan_preserves_successes_and_expected_failures(tmp_path) -> None:
     assert summary["trajectory_count"] == 2
 
     metadata = json.loads((output / "scan_metadata.json").read_text(encoding="utf-8"))
-    assert metadata["metadata_schema_version"] == 1
+    assert metadata["metadata_schema_version"] == 2
     assert metadata["base_config_reference"] == "stage1_smoke_base.yaml"
     assert not Path(metadata["scan_config_reference"]).is_absolute()
+    assert len(metadata["implementation_runtime_fingerprint"]["strict_sha256"]) == 64
 
     provenance = json.loads((output / "provenance.json").read_text(encoding="utf-8"))
     inventoried_paths = {item["path"] for item in provenance["outputs"]}

@@ -55,7 +55,7 @@ def test_negative_retention_limit_is_rejected(tmp_path) -> None:
     config["retention"]["max_trajectories"] = -1
     path = tmp_path / "negative-retention.yaml"
     path.write_text(yaml.safe_dump(config), encoding="utf-8")
-    with pytest.raises(jsonschema.ValidationError, match="greater than or equal to 0"):
+    with pytest.raises(jsonschema.ValidationError, match="minimum of 0"):
         validate_scan_config(path, SCHEMA)
 
 

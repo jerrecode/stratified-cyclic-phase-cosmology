@@ -166,7 +166,9 @@ def test_interruption_before_index_commit_preserves_old_durable_result(tmp_path,
     assert new_trajectory.is_file()
     assert new_trajectory != old_trajectory
     assert not old_trajectory.exists()
-    assert not orphan_candidates[0].exists()
+    # Recovery removes the orphan before execution. The deterministic rerun then
+    # recreates the same content-addressed path and commits it as the new result.
+    assert orphan_candidates[0] == new_trajectory
     assert len(list((output / "trajectories").glob("*.nc"))) == 1
 
 
