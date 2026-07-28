@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from scpc.data.manifest import select_products, validate_manifest
 from scpc.workflows import compare_models, run_scpc_background
