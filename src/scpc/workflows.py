@@ -187,6 +187,7 @@ def verify_scpc_background(config_path: str | Path, output_dir: str | Path) -> P
 
     report = {
         "verification_config": str(config_path),
+        "verification_config_sha256": sha256_file(config_path),
         "baseline_config": str(baseline_path),
         "baseline_config_sha256": sha256_file(baseline_path),
         "tolerance_ladder": [asdict(result) for result in ladder],
