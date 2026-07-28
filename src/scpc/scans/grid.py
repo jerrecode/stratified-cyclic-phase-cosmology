@@ -7,7 +7,11 @@ import itertools
 from dataclasses import dataclass
 from typing import Any
 
-from scpc.scans.identity import RunIdentity, canonical_run_identity
+from scpc.scans.identity import (
+    RunIdentity,
+    canonical_run_identity,
+    normalize_background_specification,
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,15 @@ def _set_existing_path(document: dict[str, Any], path: str, value: Any) -> None:
     current[leaf] = copy.deepcopy(value)
 
 
+def _get_existing_path(document: dict[str, Any], path: str) -> Any:
+    current: Any = document
+    for part in _path_parts(path):
+        if not isinstance(current, dict) or part not in current:
+            raise KeyError(f"Scan axis path does not exist in the normalized configuration: {path}")
+        current = current[part]
+    return current
+
+
 def expand_parameter_grid(
     base_specification: dict[str, Any],
     axes: dict[str, list[Any]],
@@ -49,17 +62,17 @@ def expand_parameter_grid(
 ) -> tuple[ScanPoint, ...]:
     """Expand explicit axes in stable lexical path order.
 
-    Duplicate axis values that produce the same complete specification are
+    Every point is normalized to the values consumed by the executor before its
+    identity is computed. Duplicate declarations that execute identically are
     rejected rather than silently scheduled twice.
     """
 
     if max_runs < 1:
         raise ValueError("max_runs must be positive")
     if not axes:
-        identity = canonical_run_identity(base_specification, namespace=identity_namespace)
-        return (
-            ScanPoint(identity=identity, coordinates={}, specification=copy.deepcopy(base_specification)),
-        )
+        specification = normalize_background_specification(base_specification)
+        identity = canonical_run_identity(specification, namespace=identity_namespace)
+        return (ScanPoint(identity=identity, coordinates={}, specification=specification),)
 
     ordered_paths = tuple(sorted(axes))
     values_by_path: list[tuple[Any, ...]] = []
@@ -80,20 +93,25 @@ def expand_parameter_grid(
     points: list[ScanPoint] = []
     seen_hashes: set[str] = set()
     for combination in itertools.product(*values_by_path):
-        specification = copy.deepcopy(base_specification)
-        coordinates = dict(zip(ordered_paths, combination, strict=True))
-        for path, value in coordinates.items():
-            _set_existing_path(specification, path, value)
+        declared = copy.deepcopy(base_specification)
+        for path, value in zip(ordered_paths, combination, strict=True):
+            _set_existing_path(declared, path, value)
+        specification = normalize_background_specification(declared)
+        coordinates = {
+            path: copy.deepcopy(_get_existing_path(specification, path))
+            for path in ordered_paths
+        }
         identity = canonical_run_identity(specification, namespace=identity_namespace)
         if identity.sha256 in seen_hashes:
             raise ValueError(
-                "Scan axes generate duplicate complete specifications; remove duplicate or equivalent values"
+                "Scan axes generate duplicate complete specifications; "
+                "remove duplicate or execution-equivalent values"
             )
         seen_hashes.add(identity.sha256)
         points.append(
             ScanPoint(
                 identity=identity,
-                coordinates=copy.deepcopy(coordinates),
+                coordinates=coordinates,
                 specification=specification,
             )
         )

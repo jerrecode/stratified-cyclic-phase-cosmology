@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -19,6 +20,102 @@ class RunIdentity:
     run_id: str
     sha256: str
     canonical_json: str
+
+
+_EXECUTION_TYPES: dict[str, type] = {
+    "model.background.spatial_curvature_k": int,
+    "model.background.rho_m_ref": float,
+    "model.background.rho_r_ref": float,
+    "model.background.a_ref": float,
+    "model.potential.offset": float,
+    "model.potential.amplitude": float,
+    "model.potential.strata_count": int,
+    "model.potential.field_scale": float,
+    "model.potential.target_space": str,
+    "initial_conditions.a": float,
+    "initial_conditions.phi": float,
+    "initial_conditions.phi_dot": float,
+    "initial_conditions.branch": int,
+    "run.t_start": float,
+    "run.t_end": float,
+    "run.samples": int,
+    "run.method": str,
+    "run.rtol": float,
+    "run.atol": float,
+}
+
+
+def _path_parts(path: str) -> tuple[str, ...]:
+    return tuple(path.split("."))
+
+
+def _get_existing_path(document: dict[str, Any], path: str) -> Any:
+    current: Any = document
+    for part in _path_parts(path):
+        if not isinstance(current, dict) or part not in current:
+            raise KeyError(path)
+        current = current[part]
+    return current
+
+
+def _set_existing_path(document: dict[str, Any], path: str, value: Any) -> None:
+    parts = _path_parts(path)
+    current: dict[str, Any] = document
+    for part in parts[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            raise KeyError(path)
+        current = child
+    if parts[-1] not in current:
+        raise KeyError(path)
+    current[parts[-1]] = value
+
+
+def _execution_cast(path: str, value: Any, expected: type) -> Any:
+    if expected is int:
+        if isinstance(value, (bool, np.bool_)):
+            raise ValueError(f"{path} must be an integer, not boolean")
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"{path} must be an integer") from error
+        if not math.isfinite(number) or not number.is_integer():
+            raise ValueError(f"{path} must be a finite integer")
+        return int(number)
+    if expected is float:
+        if isinstance(value, (bool, np.bool_)):
+            raise ValueError(f"{path} must be numeric, not boolean")
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"{path} must be numeric") from error
+        if not math.isfinite(number):
+            raise ValueError(f"{path} must be finite")
+        return number
+    if expected is str:
+        if not isinstance(value, str):
+            raise ValueError(f"{path} must be a string")
+        return value
+    raise TypeError(f"Unsupported execution type for {path}: {expected.__name__}")
+
+
+def normalize_background_specification(specification: dict[str, Any]) -> dict[str, Any]:
+    """Return the values exactly as the background executor will interpret them.
+
+    Known numerical and string fields are normalized before run hashing. This
+    prevents representations such as ``101`` and ``101.0`` from scheduling two
+    experiments that execute identically. Unknown extension fields are retained
+    unchanged and remain part of the identity.
+    """
+
+    normalized = copy.deepcopy(specification)
+    for path, expected in _EXECUTION_TYPES.items():
+        try:
+            value = _get_existing_path(normalized, path)
+        except KeyError:
+            continue
+        _set_existing_path(normalized, path, _execution_cast(path, value, expected))
+    return normalized
 
 
 def _normalize(value: Any) -> Any:
@@ -48,7 +145,7 @@ def canonical_run_identity(
     namespace: str = "scpc-background-v1",
     prefix_length: int = 24,
 ) -> RunIdentity:
-    """Hash a full run specification with stable float and key encoding."""
+    """Hash a full, execution-normalized run specification."""
 
     if not namespace:
         raise ValueError("namespace must not be empty")
@@ -56,7 +153,7 @@ def canonical_run_identity(
         raise ValueError("prefix_length must be between 12 and 64")
     normalized = {
         "namespace": namespace,
-        "specification": _normalize(specification),
+        "specification": _normalize(normalize_background_specification(specification)),
     }
     canonical_json = json.dumps(
         normalized,

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from scpc.models.phase import PeriodicPotential, SCPCParameters, SCPCSolution
+from scpc.scans.errors import ResultIntegrityError
 from scpc.scans.outcomes import OutcomeClass, assess_solution
 
 
@@ -72,6 +73,24 @@ def test_monotonic_contraction_is_classified() -> None:
 
 def test_unrecorded_sign_change_is_numerical_event_failure() -> None:
     assessment = assess_solution(_solution(hubble=[0.3, 0.1, -0.2]))
+    assert assessment.outcome is OutcomeClass.UNRESOLVED_EVENT_DETECTION
+    assert assessment.numerically_valid is False
+
+
+def test_zero_plateau_sign_change_is_numerical_event_failure() -> None:
+    assessment = assess_solution(_solution(hubble=[0.3, 0.0, -0.2]))
+    assert assessment.outcome is OutcomeClass.UNRESOLVED_EVENT_DETECTION
+    assert assessment.numerically_valid is False
+
+
+def test_partial_event_record_does_not_hide_later_missed_crossings() -> None:
+    assessment = assess_solution(
+        _solution(
+            hubble=[-0.2, 0.0, 0.2, 0.0, -0.2, 0.0, 0.2],
+            turning_kinds=("bounce",),
+            turning_times=[1.0],
+        )
+    )
     assert assessment.outcome is OutcomeClass.UNRESOLVED_EVENT_DETECTION
     assert assessment.numerically_valid is False
 
@@ -164,7 +183,15 @@ def test_degenerate_event_is_not_treated_as_bounce_or_turnaround() -> None:
     assert assessment.numerically_valid is False
 
 
-def test_invalid_thresholds_are_rejected() -> None:
+@pytest.mark.parametrize("value", [0.0, float("nan"), float("inf")])
+def test_invalid_thresholds_are_rejected(value: float) -> None:
     solution = _solution(hubble=[0.3, 0.2, 0.1])
-    with pytest.raises(ValueError, match="constraint_threshold"):
-        assess_solution(solution, constraint_threshold=0.0)
+    with pytest.raises(ValueError, match="finite and positive"):
+        assess_solution(solution, constraint_threshold=value)
+
+
+def test_inconsistent_event_data_raises_result_integrity_error() -> None:
+    solution = _solution(hubble=[0.3, 0.2, 0.1])
+    solution.turning_kinds = ("bounce",)
+    with pytest.raises(ResultIntegrityError, match="equal lengths"):
+        assess_solution(solution)

@@ -3,6 +3,7 @@ import json
 import numpy as np
 
 from scpc.models.phase import PeriodicPotential, SCPCParameters, SCPCSolution
+from scpc.scans.errors import OutputSerializationError, ResultIntegrityError
 from scpc.scans.identity import canonical_run_identity
 from scpc.scans.outcomes import OutcomeAssessment, OutcomeClass
 from scpc.scans.records import (
@@ -103,8 +104,10 @@ def test_initial_constraint_error_is_preserved_without_singularity_claim() -> No
     assert "singular" not in (record.reason or "").lower()
 
 
-def test_exception_classification_is_conservative() -> None:
+def test_exception_classification_is_conservative_and_phase_specific() -> None:
     assert classify_exception(FloatingPointError("a reached zero")) is FailureClass.PHYSICAL_DOMAIN_FAILURE
     assert classify_exception(RuntimeError("Background integration failed: step size")) is FailureClass.SOLVER_FAILURE
     assert classify_exception(KeyError("missing")) is FailureClass.CONFIGURATION_ERROR
+    assert classify_exception(ResultIntegrityError("bad event data")) is FailureClass.RESULT_INTEGRITY_ERROR
+    assert classify_exception(OutputSerializationError("disk write")) is FailureClass.OUTPUT_ERROR
     assert classify_exception(OSError("filesystem")) is FailureClass.UNEXPECTED_ERROR

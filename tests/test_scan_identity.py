@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 
-from scpc.scans.identity import canonical_run_identity
+from scpc.scans.identity import canonical_run_identity, normalize_background_specification
 
 
 def test_mapping_order_does_not_change_identity() -> None:
@@ -30,9 +30,20 @@ def test_numerically_distinct_floats_do_not_collapse() -> None:
     assert first.sha256 != second.sha256
 
 
+def test_execution_equivalent_integer_representations_share_identity() -> None:
+    integer = canonical_run_identity({"run": {"samples": 101}})
+    floating = canonical_run_identity({"run": {"samples": 101.0}})
+    assert integer == floating
+
+
+def test_nonintegral_integer_execution_field_is_rejected() -> None:
+    with pytest.raises(ValueError, match="finite integer"):
+        normalize_background_specification({"run": {"samples": 101.5}})
+
+
 def test_solver_settings_are_part_of_experiment_identity() -> None:
-    dop853 = canonical_run_identity({"method": "DOP853", "rtol": 1.0e-9})
-    rk45 = canonical_run_identity({"method": "RK45", "rtol": 1.0e-9})
+    dop853 = canonical_run_identity({"run": {"method": "DOP853", "rtol": 1.0e-9}})
+    rk45 = canonical_run_identity({"run": {"method": "RK45", "rtol": 1.0e-9}})
     assert dop853.run_id != rk45.run_id
 
 

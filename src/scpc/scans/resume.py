@@ -45,14 +45,18 @@ def load_existing_scan_rows(
     for row in rows:
         run_id = row.get("run_id", "")
         if not run_id or run_id in rows_by_id:
-            raise ValueError(f"Existing scan index contains a missing or duplicate run ID: {run_id!r}")
+            raise ValueError(
+                f"Existing scan index contains a missing or duplicate run ID: {run_id!r}"
+            )
         point = points_by_id.get(run_id)
         if point is None:
             raise ValueError(f"Existing scan index contains an unplanned run ID: {run_id}")
         if row.get("run_sha256") != point.identity.sha256:
             raise ValueError(f"Run hash mismatch for existing scan row {run_id}")
         if row.get("status") not in valid_statuses:
-            raise ValueError(f"Unknown run status in existing scan row {run_id}: {row.get('status')!r}")
+            raise ValueError(
+                f"Unknown run status in existing scan row {run_id}: {row.get('status')!r}"
+            )
 
         try:
             coordinates = json.loads(row["coordinates"])
@@ -69,27 +73,10 @@ def load_existing_scan_rows(
             trajectory = _trajectory_file(output, trajectory_path)
             if not trajectory.is_file():
                 raise ValueError(
-                    f"Existing scan row {run_id} references a missing trajectory: {trajectory_path}"
+                    f"Existing scan row {run_id} references a missing trajectory: "
+                    f"{trajectory_path}"
                 )
             saved_trajectories += 1
         rows_by_id[run_id] = row
 
     return rows, rows_by_id, saved_trajectories
-
-
-def remove_existing_run_for_rerun(
-    run_id: str,
-    rows: list[dict[str, Any]],
-    rows_by_id: dict[str, dict[str, Any]],
-    output: Path,
-) -> bool:
-    """Remove one old record and any retained trajectory before a rerun."""
-
-    existing = rows_by_id.pop(run_id)
-    rows.remove(existing)
-    trajectory_path = existing.get("trajectory_path", "")
-    if not trajectory_path:
-        return False
-    trajectory = _trajectory_file(output, trajectory_path)
-    trajectory.unlink()
-    return True

@@ -3,36 +3,79 @@
   "$id": "https://github.com/jerrecode/stratified-cyclic-phase-cosmology/configs/scans/scan.schema.json",
   "title": "SCPC deterministic background scan configuration",
   "type": "object",
-  "required": ["schema_version", "base_config", "axes"],
+  "required": [
+    "schema_version",
+    "base_config",
+    "axes"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": 1},
-    "description": {"type": "string", "minLength": 1},
-    "base_config": {"type": "string", "minLength": 1},
-    "identity_namespace": {"type": "string", "minLength": 1},
-    "max_runs": {"type": "integer", "minimum": 1},
-    "resume": {"type": "boolean"},
+    "schema_version": {
+      "const": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_config": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identity_namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_runs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "resume": {
+      "type": "boolean"
+    },
     "rerun_statuses": {
       "type": "array",
       "uniqueItems": true,
-      "items": {"enum": ["completed", "rejected", "failed"]}
+      "items": {
+        "enum": [
+          "completed",
+          "rejected",
+          "failed"
+        ]
+      }
     },
     "axes": {
       "type": "object",
-      "propertyNames": {"pattern": "^[^.]+(?:\\.[^.]+)+$"},
+      "propertyNames": {
+        "pattern": "^[^.]+(?:\\.[^.]+)+$"
+      },
       "additionalProperties": {
         "type": "array",
         "minItems": 1,
-        "items": {"type": ["number", "string", "boolean"]}
+        "items": {
+          "type": [
+            "number",
+            "string",
+            "boolean"
+          ]
+        }
       }
     },
     "classification": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "constraint_threshold": {"type": "number", "exclusiveMinimum": 0},
-        "hubble_zero_tolerance": {"type": "number", "exclusiveMinimum": 0},
-        "return_tolerance": {"type": "number", "exclusiveMinimum": 0}
+        "constraint_threshold": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "hubble_zero_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "return_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       }
     },
     "retention": {
@@ -42,25 +85,54 @@
         "outcomes": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "enum": [
+              "monotonic_expansion",
+              "monotonic_contraction",
+              "quasi_static_or_ambiguous",
+              "recollapse_without_bounce",
+              "one_off_bounce",
+              "single_bounce_turnaround_pair",
+              "repeated_turning_points"
+            ]
+          }
         },
-        "max_trajectories": {"type": "integer", "minimum": 0}
+        "max_trajectories": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "visualization": {
       "type": "object",
-      "required": ["x_axis", "y_axis"],
+      "required": [
+        "x_axis",
+        "y_axis"
+      ],
       "additionalProperties": false,
       "properties": {
-        "x_axis": {"type": "string", "minLength": 1},
-        "y_axis": {"type": "string", "minLength": 1},
-        "outcome_map": {"type": "string", "minLength": 1},
-        "annotate": {"type": "boolean"}
+        "x_axis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "y_axis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome_map": {
+          "type": "string",
+          "minLength": 1
+        },
+        "annotate": {
+          "type": "boolean"
+        }
       }
     },
     "notes": {
       "type": "array",
-      "items": {"type": "string"}
+      "items": {
+        "type": "string"
+      }
     }
   }
 }

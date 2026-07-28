@@ -75,6 +75,11 @@ def test_duplicate_complete_specifications_are_rejected() -> None:
         expand_parameter_grid(_base(), {"initial_conditions.phi": [0.1, 0.1]})
 
 
+def test_execution_equivalent_axis_values_are_rejected_as_duplicates() -> None:
+    with pytest.raises(ValueError, match="duplicate complete specifications"):
+        expand_parameter_grid(_base(), {"run.samples": [101, 101.0]})
+
+
 def test_scan_size_limit_is_checked_before_execution() -> None:
     with pytest.raises(ValueError, match="exceeding max_runs"):
         expand_parameter_grid(

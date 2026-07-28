@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from scpc.numerics.provenance import sha256_file
+from scpc.scans.errors import OutputSerializationError
 
 
 def safe_relative_output_path(output: Path, raw_path: str) -> Path:
@@ -23,14 +24,10 @@ def safe_relative_output_path(output: Path, raw_path: str) -> Path:
 
 
 def write_content_addressed_netcdf(dataset: Any, directory: Path, run_id: str) -> Path:
-    """Write a candidate trajectory without replacing a currently indexed file.
+    """Write a candidate trajectory without replacing a currently indexed file."""
 
-    The final filename contains a prefix of the file checksum. A process crash
-    before index replacement can therefore leave only an unreferenced file,
-    never a missing file behind the still-durable old index row.
-    """
-
-    if not run_id or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for character in run_id):
+    safe_characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    if not run_id or any(character not in safe_characters for character in run_id):
         raise ValueError("run_id contains unsafe filename characters")
     directory.mkdir(parents=True, exist_ok=True)
     pending = directory / f".{run_id}.pending-{os.getpid()}.nc"
@@ -40,14 +37,21 @@ def write_content_addressed_netcdf(dataset: Any, directory: Path, run_id: str) -
         destination = directory / f"{run_id}-{checksum[:20]}.nc"
         if destination.exists():
             if sha256_file(destination) != checksum:
-                raise RuntimeError(f"Content-address collision for {destination.name}")
+                raise OutputSerializationError(
+                    f"Content-address collision for {destination.name}"
+                )
             pending.unlink()
         else:
             pending.replace(destination)
         return destination
-    except Exception:
+    except OutputSerializationError:
         pending.unlink(missing_ok=True)
         raise
+    except Exception as error:
+        pending.unlink(missing_ok=True)
+        raise OutputSerializationError(
+            f"Could not serialize trajectory for {run_id}: {error}"
+        ) from error
 
 
 def replace_index_row_atomic(
@@ -62,7 +66,8 @@ def replace_index_row_atomic(
         raise ValueError("new_row must contain a nonempty run_id")
     fieldnames = list(new_row)
     retained = [row for row in rows if row.get("run_id") != run_id]
-    if len(retained) != len(rows) - sum(row.get("run_id") == run_id for row in rows):
+    expected_count = len(rows) - sum(row.get("run_id") == run_id for row in rows)
+    if len(retained) != expected_count:
         raise RuntimeError("Unexpected index filtering result")
     committed = sorted([*retained, new_row], key=lambda row: str(row["run_id"]))
     if any(list(row) != fieldnames for row in committed):

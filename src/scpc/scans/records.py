@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from scpc.models.phase import SCPCSolution
+from scpc.scans.errors import OutputSerializationError, ResultIntegrityError, ScanConfigurationError
 from scpc.scans.identity import RunIdentity
 from scpc.scans.outcomes import OutcomeAssessment
 
@@ -24,6 +25,8 @@ class FailureClass(StrEnum):
     CONFIGURATION_ERROR = "configuration_error"
     PHYSICAL_DOMAIN_FAILURE = "physical_domain_failure"
     SOLVER_FAILURE = "solver_failure"
+    RESULT_INTEGRITY_ERROR = "result_integrity_error"
+    OUTPUT_ERROR = "output_error"
     UNEXPECTED_ERROR = "unexpected_error"
 
 
@@ -110,6 +113,12 @@ def completed_run_record(
 
 def classify_exception(error: Exception) -> FailureClass:
     message = str(error).lower()
+    if isinstance(error, ScanConfigurationError):
+        return FailureClass.CONFIGURATION_ERROR
+    if isinstance(error, ResultIntegrityError):
+        return FailureClass.RESULT_INTEGRITY_ERROR
+    if isinstance(error, OutputSerializationError):
+        return FailureClass.OUTPUT_ERROR
     if isinstance(error, ValueError) and "initial state violates the friedmann constraint" in message:
         return FailureClass.INVALID_INITIAL_CONSTRAINT
     if isinstance(error, FloatingPointError):
