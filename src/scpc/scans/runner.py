@@ -24,6 +24,7 @@ from scpc.numerics.provenance import (
     sha256_file,
     write_provenance,
 )
+from scpc.scans.config import DEFAULT_SCAN_SCHEMA, validate_scan_config
 from scpc.scans.grid import ScanPoint, expand_parameter_grid
 from scpc.scans.outcomes import assess_solution
 from scpc.scans.records import completed_run_record, failed_run_record
@@ -133,8 +134,6 @@ def _configured_outcome_map(scan: dict[str, Any], output: Path, index_path: Path
     visualization = scan.get("visualization")
     if visualization is None:
         return None
-    if not isinstance(visualization, dict):
-        raise TypeError("visualization must be a mapping")
     filename = Path(str(visualization.get("outcome_map", "outcome_map.png")))
     if filename.is_absolute() or ".." in filename.parts:
         raise ValueError("visualization.outcome_map must remain inside the scan output directory")
@@ -148,13 +147,17 @@ def _configured_outcome_map(scan: dict[str, Any], output: Path, index_path: Path
     )
 
 
-def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path:
+def run_background_scan(
+    config_path: str | Path,
+    output_dir: str | Path,
+    *,
+    schema_path: str | Path = DEFAULT_SCAN_SCHEMA,
+) -> Path:
     """Execute or resume one deterministic serial background scan."""
 
     scan_path = Path(config_path).resolve()
-    scan = _load_mapping(scan_path)
-    if scan.get("schema_version") != 1:
-        raise ValueError("Only scan schema_version 1 is supported")
+    schema_file = Path(schema_path).resolve()
+    scan = validate_scan_config(scan_path, schema_file)
     base_reference = str(scan["base_config"])
     base_path = _resolve_relative(scan_path, base_reference)
     base = _load_mapping(base_path)
@@ -176,6 +179,8 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
     metadata = {
         "metadata_schema_version": 1,
         "scan_schema_version": 1,
+        "scan_schema_reference": schema_file.name,
+        "scan_schema_sha256": sha256_file(schema_file),
         "scan_config_reference": scan_path.name,
         "scan_config_sha256": sha256_file(scan_path),
         "base_config_reference": base_reference,
@@ -209,8 +214,6 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
     retention = scan.get("retention", {})
     retained_outcomes = set(str(value) for value in retention.get("outcomes", []))
     max_trajectories = int(retention.get("max_trajectories", 0))
-    if max_trajectories < 0:
-        raise ValueError("retention.max_trajectories must be nonnegative")
     saved_trajectories = sum(bool(row.get("trajectory_path")) for row in rows)
 
     for point in points:
@@ -281,6 +284,8 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
         scan_path,
         {
             "workflow": "run_background_scan",
+            "scan_schema": str(schema_file),
+            "scan_schema_sha256": sha256_file(schema_file),
             "base_config": str(base_path),
             "base_config_sha256": sha256_file(base_path),
         },
