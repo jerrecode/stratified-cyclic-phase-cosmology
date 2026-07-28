@@ -34,6 +34,7 @@ class RunRecord:
     run_id: str
     run_sha256: str
     status: RunStatus
+    coordinates: dict[str, Any]
     specification: dict[str, Any]
     outcome: str | None = None
     reason: str | None = None
@@ -62,6 +63,7 @@ class RunRecord:
 
         mapping = self.to_mapping()
         for key in (
+            "coordinates",
             "specification",
             "event_sequence",
             "return_sequence_classifications",
@@ -82,6 +84,7 @@ def completed_run_record(
     assessment: OutcomeAssessment,
     solution: SCPCSolution,
     *,
+    coordinates: dict[str, Any] | None = None,
     trajectory_path: str | Path | None = None,
 ) -> RunRecord:
     status = RunStatus.COMPLETED if assessment.numerically_valid else RunStatus.REJECTED
@@ -89,6 +92,7 @@ def completed_run_record(
         run_id=identity.run_id,
         run_sha256=identity.sha256,
         status=status,
+        coordinates=dict(coordinates or {}),
         specification=specification,
         outcome=assessment.outcome.value,
         reason=assessment.reason,
@@ -121,6 +125,8 @@ def failed_run_record(
     identity: RunIdentity,
     specification: dict[str, Any],
     error: Exception,
+    *,
+    coordinates: dict[str, Any] | None = None,
 ) -> RunRecord:
     """Record an exception without promoting it to a physical singularity."""
 
@@ -129,6 +135,7 @@ def failed_run_record(
         run_id=identity.run_id,
         run_sha256=identity.sha256,
         status=RunStatus.FAILED,
+        coordinates=dict(coordinates or {}),
         specification=specification,
         reason="The numerical experiment did not return a completed trajectory.",
         numerically_valid=False,
