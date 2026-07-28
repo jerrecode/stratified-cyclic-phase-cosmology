@@ -10,6 +10,7 @@ from .records import (
     completed_run_record,
     failed_run_record,
 )
+from .runner import run_background_scan
 
 __all__ = [
     "FailureClass",
@@ -24,4 +25,5 @@ __all__ = [
     "completed_run_record",
     "expand_parameter_grid",
     "failed_run_record",
+    "run_background_scan",
 ]
