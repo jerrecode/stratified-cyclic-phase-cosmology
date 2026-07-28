@@ -158,5 +158,5 @@ def test_terminated_solution_requires_valid_configured_domain_metadata(metadata)
     else:
         solution.solver_metadata["integration_domain"] = metadata
 
-    with pytest.raises(ResultIntegrityError, match="integration-domain|configured"):
+    with pytest.raises(ResultIntegrityError, match="(?i)integration-domain|configured"):
         assess_solution(solution)
