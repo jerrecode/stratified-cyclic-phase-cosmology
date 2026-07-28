@@ -7,7 +7,7 @@ background-theory baseline, not a claim that stable cyclic solutions exist.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -16,14 +16,39 @@ from scipy.integrate import solve_ivp
 
 @dataclass(frozen=True)
 class PeriodicPotential:
+    """Periodic scalar potential with an explicitly declared target-space topology.
+
+    A periodic potential on the real line does not identify field values that
+    differ by a potential period. When ``target_space`` is ``"circle"``, only
+    shifts by the full target circumference ``2*pi*field_scale`` identify the
+    same point; adjacent potential minima remain distinct strata.
+    """
+
     offset: float = 3.0
     amplitude: float = 0.1
     strata_count: int = 4
     field_scale: float = 1.0
+    target_space: Literal["real", "circle"] = "real"
 
     def __post_init__(self) -> None:
         if self.amplitude < 0 or self.field_scale <= 0 or self.strata_count < 1:
             raise ValueError("Potential parameters are outside their allowed domain")
+        if self.target_space not in ("real", "circle"):
+            raise ValueError("target_space must be 'real' or 'circle'")
+
+    @property
+    def potential_period(self) -> float:
+        """Field displacement between adjacent equivalent potential cells."""
+
+        return float(2.0 * np.pi * self.field_scale / self.strata_count)
+
+    @property
+    def target_circumference(self) -> float | None:
+        """Full compact target circumference, or ``None`` for a real scalar."""
+
+        if self.target_space == "circle":
+            return float(2.0 * np.pi * self.field_scale)
+        return None
 
     def value(self, phi: np.ndarray | float) -> np.ndarray:
         x = self.strata_count * np.asarray(phi, dtype=float) / self.field_scale
