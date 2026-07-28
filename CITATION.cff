@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "Please cite this software and the specific observational data releases used."
+title: "Stratified Cyclic Phase Cosmology"
+type: software
+authors:
+  - family-names: Resch
+    given-names: Jeremy Erich
+repository-code: "https://github.com/jerrecode/stratified-cyclic-phase-cosmology"
+license: BSD-3-Clause
+version: 0.1.0
+date-released: 2026-07-28
+keywords:
+  - cosmology
+  - cyclic cosmology
+  - numerical relativity
+  - scalar field
+  - reproducible research

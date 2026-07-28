@@ -1,0 +1,100 @@
+manifest_version: 0.1.0
+last_verified: '2026-07-28'
+project:
+  name: Stratified Cyclic Phase Cosmology
+  repository: https://github.com/jerrecode/stratified-cyclic-phase-cosmology
+  scope: Curated public releases for background fitting, perturbation likelihoods, validation, and comparative visualization.
+unit_conventions:
+  internal_background: Natural units c=hbar=M_pl=1 for SCPC phase integration.
+  observational_background: H in km s^-1 Mpc^-1; distances in Mpc; redshift dimensionless.
+  angles: Degrees for catalog coordinates; radians inside numerical trigonometric operations.
+  temperature: K_CMB or microK_CMB as specified by provider.
+quantity_registry:
+  redshift:
+    symbol: z
+    unit: '1'
+    dimension: dimensionless
+    description: Cosmological redshift.
+    relation: 1+z=a_0/a
+  scale_factor:
+    symbol: a
+    unit: '1'
+    dimension: dimensionless
+    description: FLRW scale factor.
+  hubble_parameter:
+    symbol: H
+    unit: km s^-1 Mpc^-1
+    dimension: T^-1
+    description: Expansion rate.
+    relation: H=dot(a)/a
+  distance_modulus:
+    symbol: mu
+    unit: mag
+    dimension: dimensionless logarithmic
+    description: Supernova distance modulus.
+    relation: mu=5 log10(D_L/Mpc)+25
+  comoving_distance:
+    symbol: D_M
+    unit: Mpc
+    dimension: L
+    description: Transverse comoving distance.
+  angular_multipole:
+    symbol: ell
+    unit: '1'
+    dimension: dimensionless
+    description: Spherical-harmonic multipole.
+  cmb_power:
+    symbol: C_ell
+    unit: microK^2
+    dimension: Theta^2
+    description: CMB angular power spectrum.
+  wavenumber:
+    symbol: k
+    unit: Mpc^-1
+    dimension: L^-1
+    description: Comoving Fourier wavenumber.
+  matter_power:
+    symbol: P(k)
+    unit: Mpc^3
+    dimension: L^3
+    description: Matter power spectrum.
+  bao_ratio:
+    symbol: D/r_d
+    unit: '1'
+    dimension: dimensionless
+    description: BAO distance divided by drag-epoch sound horizon.
+  strain:
+    symbol: h
+    unit: '1'
+    dimension: dimensionless
+    description: Gravitational-wave strain.
+  gw_energy_density:
+    symbol: Omega_GW
+    unit: '1'
+    dimension: dimensionless
+    description: GW energy density per logarithmic frequency interval.
+  frequency:
+    symbol: f
+    unit: Hz
+    dimension: T^-1
+    description: Physical frequency.
+  toa:
+    symbol: t_TOA
+    unit: s
+    dimension: T
+    description: Pulsar pulse time of arrival.
+release_files:
+- releases/planck_pr3_cosmology.yaml
+- releases/planck_pr4_npipe.yaml
+- releases/desi_dr1_bao_cosmology.yaml
+- releases/desi_dr1_full_shape.yaml
+- releases/desi_dr2_cosmology.yaml
+- releases/pantheon_plus.yaml
+- releases/des_sn5yr.yaml
+- releases/des_y6_cosmology.yaml
+- releases/act_dr6_02.yaml
+- releases/gwosc_o4.yaml
+- releases/nanograv_15yr.yaml
+- releases/euclid_q1.yaml
+- releases/sdss_eboss_dr16_lss.yaml
+- releases/sdss_dr19.yaml

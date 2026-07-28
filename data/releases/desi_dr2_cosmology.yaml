@@ -1,0 +1,53 @@
+id: desi_dr2_cosmology
+title: DESI DR2 Cosmology Supporting Products
+provider: Dark Energy Spectroscopic Instrument
+release: DR2 cosmology results
+release_date: '2025-03-19'
+access_level: public
+scientific_domains:
+- bao
+- background
+- large_scale_structure
+roles:
+- posterior_comparison
+- model_comparison
+- validation
+landing_page: https://data.desi.lbl.gov/doc/papers/dr2/
+documentation: https://data.desi.lbl.gov/doc/papers/
+citation: DESI Collaboration, DESI DR2 Results I and II (2025).
+license: Public supporting products; observe per-product license and DESI acknowledgement.
+notes:
+- The underlying DR2 spectra and redshifts are not yet a public spectroscopic release in the reviewed documentation.
+- Public products currently include cosmology chains and posterior maximization results.
+access:
+  method: provider_paper_directory_discovery
+  base_url: https://data.desi.lbl.gov/public/papers
+  authentication: None.
+  instructions:
+  - Follow the official DR2 paper page to the current supporting-product directory.
+  - Retrieve cosmology chains/maxima only; do not label them as the underlying DR2 spectroscopic release.
+  - Lock the resolved URLs and checksums in the run provenance because supporting directories may be reorganized.
+  commands: []
+products:
+- id: cosmology_chains_and_maxima
+  required: false
+  purpose: Compare SCPC constraints with DESI DR2 published model fits on common parameter axes.
+  selection: Exact model/dataset combinations declared in a figure or table.
+  formats:
+  - ASCII
+  - YAML
+  - archive
+  expected_scale: MB to GB
+  variables:
+  - name: posterior samples
+    symbol: theta
+    unit: mixed
+    dimension: mixed
+    shape: N_sample x N_parameter
+    description: Published posterior parameter samples.
+  - name: posterior maximum
+    symbol: theta_MAP
+    unit: mixed
+    dimension: mixed
+    shape: N_parameter
+    description: Best-fit or maximum-posterior parameter vector.

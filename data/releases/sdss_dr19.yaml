@@ -1,0 +1,66 @@
+id: sdss_dr19
+title: Sloan Digital Sky Survey Data Release 19
+provider: Sloan Digital Sky Survey
+release: DR19
+release_date: '2025-07-10'
+access_level: public
+scientific_domains:
+- spectroscopy
+- catalogs
+- survey_validation
+roles:
+- catalog_optional
+- cross_survey_validation
+landing_page: https://www.sdss.org/dr19/
+documentation: https://www.sdss.org/dr19/data_access/
+citation: SDSS Collaboration DR19 data release paper and product-specific papers.
+license: SDSS public data policy; include SDSS acknowledgement.
+notes:
+- DR19 is the current public SDSS release in the reviewed documentation.
+- The full archive is hundreds of TB; use SAS, SkyServer, Valis, sdss-access, rsync, or bounded queries.
+access:
+  method: sas_skyserver_valis_rsync
+  base_url: https://data.sdss.org/sas
+  authentication: Public file access; SciServer accounts optional for hosted computation.
+  instructions:
+  - Use SkyServer/CasJobs for catalog queries, SAS for explicit files, or sdss-access for product-aware retrieval.
+  - Use the SDSS data transfer node for large declared subsets.
+  - Never mirror the complete release for SCPC background analysis.
+  commands:
+  - python -m pip install sdss-access
+  - wget --spider https://dr19.sdss.org/sas/dr19/spectro/boss/redux/v6_1_3/fieldlist-v6_1_3.fits
+products:
+- id: bounded_spectroscopic_catalog_subset
+  required: false
+  purpose: Cross-survey redshift and catalog-systematics validation.
+  selection: SQL or file subset defined by sky, target class, quality, and redshift criteria.
+  formats:
+  - FITS
+  - CSV
+  - database query
+  expected_scale: Query-dependent; full DR19 exceeds 100 TB incremental volume
+  variables:
+  - name: right ascension
+    symbol: RA
+    unit: deg
+    dimension: dimensionless angle
+    shape: N_object
+    description: Sky position.
+  - name: declination
+    symbol: DEC
+    unit: deg
+    dimension: dimensionless angle
+    shape: N_object
+    description: Sky position.
+  - name: redshift
+    symbol: z
+    unit: '1'
+    dimension: dimensionless
+    shape: N_object
+    description: Pipeline or catalog redshift.
+  - name: redshift uncertainty
+    symbol: sigma_z
+    unit: '1'
+    dimension: dimensionless
+    shape: N_object
+    description: Redshift uncertainty.

@@ -1,0 +1,62 @@
+id: sdss_eboss_dr16_lss
+title: SDSS eBOSS DR16 Large-Scale Structure Catalogs
+provider: Sloan Digital Sky Survey
+release: DR16 eBOSS LSS VAC
+release_date: '2020'
+access_level: public
+scientific_domains:
+- bao
+- large_scale_structure
+- redshift_space_distortions
+roles:
+- legacy_validation
+- model_comparison
+- catalog_optional
+landing_page: https://data.sdss.org/sas/dr16/eboss/lss/catalogs/
+documentation: https://www.sdss.org/dr19/data_access/value-added-catalogs?vac_id=49
+citation: eBOSS DR16 LSS catalog and final cosmology papers.
+license: SDSS public data policy; include SDSS acknowledgement.
+notes:
+- Legacy comparison release useful for reproducing pre-DESI BAO/RSD results.
+access:
+  method: https_directory_or_rsync
+  base_url: https://data.sdss.org/sas/dr16/eboss/lss/catalogs/
+  authentication: None.
+  instructions:
+  - Select tracer-specific data/random catalogs and matching weights or compressed likelihood products.
+  - Use rsync for large subsets and retain the exact SAS path.
+  commands:
+  - wget --mirror --no-parent --directory-prefix={destination}/sdss_eboss_dr16 https://data.sdss.org/sas/dr16/eboss/lss/catalogs/
+products:
+- id: lss_data_random_catalogs
+  required: false
+  purpose: Legacy clustering/BAO validation and survey-window tests.
+  selection: Only tracer, cap, reconstruction state, and catalog version required by a declared reproduction.
+  formats:
+  - FITS
+  expected_scale: GB-scale for full data and random catalogs
+  variables:
+  - name: right ascension
+    symbol: RA
+    unit: deg
+    dimension: dimensionless angle
+    shape: N_object
+    description: Object sky position.
+  - name: declination
+    symbol: DEC
+    unit: deg
+    dimension: dimensionless angle
+    shape: N_object
+    description: Object sky position.
+  - name: redshift
+    symbol: z
+    unit: '1'
+    dimension: dimensionless
+    shape: N_object
+    description: Spectroscopic redshift.
+  - name: survey weight
+    symbol: w
+    unit: '1'
+    dimension: dimensionless
+    shape: N_object
+    description: Combined observational/systematic weight.

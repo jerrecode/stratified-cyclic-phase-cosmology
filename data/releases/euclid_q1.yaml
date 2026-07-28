@@ -1,0 +1,67 @@
+id: euclid_q1
+title: Euclid Quick Data Release Q1
+provider: European Space Agency / Euclid Consortium
+release: Q1
+release_date: '2025-03-19'
+access_level: public
+scientific_domains:
+- imaging
+- spectroscopy
+- photometric_redshifts
+- catalogs
+- large_scale_structure
+roles:
+- validation
+- visualization
+- catalog_optional
+landing_page: https://eas.esac.esa.int/sas/
+documentation: https://euclid.esac.esa.int/dr/q1/expsup/master.html
+citation: ESA and Euclid Consortium Q1 documentation and relevant Q1 science/data papers.
+license: ESA archive terms; inspect product metadata.
+notes:
+- Q1 covers 63.1 square degrees and about 30 million objects in the reviewed documentation.
+- No shear products or OU-SIM products are distributed in Q1; do not treat Q1 as a weak-lensing cosmology likelihood release.
+access:
+  method: science_archive_tap_datalink_cutout
+  base_url: https://eas.esac.esa.int/sas/
+  authentication: Public archive queries; ESA account may be needed for some Datalabs workflows, not ordinary public SAS access.
+  instructions:
+  - Use SAS web search or IVOA TAP/ADQL for MER, PHZ, and SPE catalog subsets.
+  - Use DataLink for spectra and cutout services for mosaics.
+  - Persist the ADQL query, product identifiers, and archive metadata in provenance.
+  commands: []
+products:
+- id: catalog_query_subsets
+  required: false
+  purpose: Cross-survey validation, topology-aware catalog visualization, and future clustering prototypes.
+  selection: ADQL-bounded sky/redshift/quality subset; avoid full Q1 download by default.
+  formats:
+  - VOTable
+  - FITS
+  - CSV
+  expected_scale: Query-dependent
+  variables:
+  - name: right ascension
+    symbol: RA
+    unit: deg
+    dimension: dimensionless angle
+    shape: N_object
+    description: ICRS right ascension.
+  - name: declination
+    symbol: DEC
+    unit: deg
+    dimension: dimensionless angle
+    shape: N_object
+    description: ICRS declination.
+  - name: photometric redshift
+    symbol: z_phot
+    unit: '1'
+    dimension: dimensionless
+    shape: N_object
+    description: Photometric-redshift estimate or PDF summary.
+  - name: spectroscopic redshift
+    symbol: z_spec
+    unit: '1'
+    dimension: dimensionless
+    shape: N_object
+    description: Spectroscopic-redshift estimate when available.

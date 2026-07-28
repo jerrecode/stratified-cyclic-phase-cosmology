@@ -1,0 +1,6 @@
+\section{Numerical implementation}
+The background system is integrated with adaptive explicit Runge--Kutta methods and continuous event detection at $H=0$. The Friedmann constraint is monitored through the normalized residual
+\begin{equation}
+\epsilon_F=\frac{H^2+k/a^2-\rho_{\rm tot}/3}{\max(|\rho_{\rm tot}/3|,\epsilon_*)}.
+\end{equation}
+Publication results require tolerance convergence, solver cross-checks, and a declared maximum residual. Software and figures are generated from the same serialized arrays in accordance with reproducible-research practice \cite{wilkinson2016,barker2022}.

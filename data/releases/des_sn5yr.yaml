@@ -1,0 +1,61 @@
+id: des_sn5yr
+title: Dark Energy Survey Supernova 5-Year Data Release
+provider: Dark Energy Survey
+release: DES-SN5YR / Dovekie
+release_date: 2024-2026
+access_level: public
+scientific_domains:
+- supernovae
+- background
+roles:
+- parameter_fit
+- likelihood
+- simulation_validation
+- model_comparison
+landing_page: https://github.com/des-science/DES-SN5YR
+documentation: https://github.com/des-science/DES-SN5YR/blob/main/README.md
+citation: DES-SN 5YR release papers; cite the exact legacy or updated Dovekie analysis used.
+license: Repository-specific terms and DES acknowledgement.
+notes:
+- The repository includes light curves, simulations, distances, covariances, likelihoods, and chains.
+- Pin a release tag or commit because the repository supersedes earlier results.
+access:
+  method: git_clone
+  base_url: https://github.com/des-science/DES-SN5YR.git
+  authentication: None.
+  instructions:
+  - Clone a declared tag or commit.
+  - For background fits, select 4_DISTANCES_COVMAT and the matching likelihood inputs.
+  - Use simulations only for validation tasks that require them.
+  commands:
+  - git clone --depth 1 https://github.com/des-science/DES-SN5YR.git {destination}/des_sn5yr
+products:
+- id: distances_covariance_likelihood
+  required: false
+  purpose: Independent SN distance constraint and comparison with Pantheon+.
+  selection: Data vector, redshift, STAT+SYST covariance, and matching likelihood configuration.
+  formats:
+  - ASCII
+  - FITS
+  - YAML
+  - Python
+  expected_scale: MB to GB depending on simulations
+  variables:
+  - name: redshift
+    symbol: zHD
+    unit: '1'
+    dimension: dimensionless
+    shape: N_SN
+    description: Hubble-diagram redshift.
+  - name: distance modulus
+    symbol: mu
+    unit: mag
+    dimension: dimensionless logarithmic
+    shape: N_SN
+    description: SN distance modulus.
+  - name: covariance
+    symbol: Cov_mu
+    unit: mag^2
+    dimension: dimensionless logarithmic squared
+    shape: N_SN x N_SN
+    description: Distance covariance.

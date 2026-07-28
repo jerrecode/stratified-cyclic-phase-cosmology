@@ -1,0 +1,59 @@
+id: desi_dr1_full_shape
+title: DESI DR1 Full-Shape Cosmology Results
+provider: Dark Energy Spectroscopic Instrument
+release: DR1 full-shape cosmology VAC
+release_date: '2025'
+access_level: public
+scientific_domains:
+- large_scale_structure
+- matter_power
+- growth
+roles:
+- parameter_fit
+- likelihood
+- posterior_comparison
+landing_page: https://data.desi.lbl.gov/public/dr1/vac/dr1/full-shape-cosmo-params
+documentation: https://data.desi.lbl.gov/doc/releases/dr1/vac/full-shape-cosmo-params/
+citation: DESI Collaboration, full-shape clustering cosmology paper and DR1 release.
+license: CC BY 4.0; include DESI acknowledgement.
+notes:
+- Initial SCPC background work may defer this product until perturbations and growth are implemented.
+access:
+  method: https_directory
+  base_url: https://data.desi.lbl.gov/public/dr1/vac/dr1/full-shape-cosmo-params
+  authentication: None.
+  instructions:
+  - Download only declared chain/maximum subsets or public likelihood inputs.
+  - Record dataset combination and nonlinear-scale cuts in run provenance.
+  commands:
+  - wget --mirror --no-parent --no-host-directories --cut-dirs=5 --directory-prefix={destination} https://data.desi.lbl.gov/public/dr1/vac/dr1/full-shape-cosmo-params/
+products:
+- id: full_shape_likelihood_inputs
+  required: false
+  purpose: Constrain growth, shape, bias, and neutrino-sensitive observables after SCPC perturbations exist.
+  selection: Public data vectors, covariance, window functions, scale cuts, and nuisance definitions.
+  formats:
+  - FITS
+  - HDF5
+  - ASCII
+  - YAML
+  expected_scale: MB to GB
+  variables:
+  - name: wavenumber
+    symbol: k
+    unit: h Mpc^-1
+    dimension: L^-1
+    shape: N_k
+    description: Comoving wavenumber.
+  - name: power-spectrum multipoles
+    symbol: P_ell(k)
+    unit: (Mpc/h)^3
+    dimension: L^3
+    shape: N_tracer x N_ell x N_k
+    description: Clustering power-spectrum multipoles.
+  - name: covariance
+    symbol: Cov
+    unit: mixed
+    dimension: mixed
+    shape: N_obs x N_obs
+    description: Full-shape data covariance.

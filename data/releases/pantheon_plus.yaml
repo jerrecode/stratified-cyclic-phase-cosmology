@@ -1,0 +1,60 @@
+id: pantheon_plus
+title: Pantheon+ and SH0ES Data Release
+provider: Pantheon+ / SH0ES Collaboration
+release: main public repository
+release_date: '2022'
+access_level: public
+scientific_domains:
+- supernovae
+- background
+- distance_ladder
+roles:
+- parameter_fit
+- likelihood
+- validation
+- model_comparison
+landing_page: https://github.com/PantheonPlusSH0ES/DataRelease
+documentation: https://github.com/PantheonPlusSH0ES/DataRelease/blob/main/README.md
+citation: Scolnic et al. 2022 and Brout et al. 2022; cite SH0ES papers only when those products are used.
+license: Repository-specific terms; preserve original notices and citations.
+notes:
+- Use Pantheon+ distances and covariance for uncalibrated SN cosmology.
+- Use SH0ES host-distance products only when the local calibration is intentionally included.
+access:
+  method: git_clone
+  base_url: https://github.com/PantheonPlusSH0ES/DataRelease.git
+  authentication: None.
+  instructions:
+  - Clone or archive a specific commit.
+  - Use Pantheon+_Data/4_DISTANCES_AND_COVAR for distance-vector likelihood work.
+  - Record the Git commit in provenance.
+  commands:
+  - git clone --depth 1 https://github.com/PantheonPlusSH0ES/DataRelease.git {destination}/pantheon_plus
+products:
+- id: distances_and_covariance
+  required: true
+  purpose: Fit luminosity-distance relations and dark-energy/background parameters.
+  selection: Pantheon+ distance data vector and matching STAT+SYS covariance; exclude SH0ES calibration unless declared.
+  formats:
+  - ASCII
+  - covariance text
+  expected_scale: MB
+  variables:
+  - name: CMB-frame redshift
+    symbol: zHD
+    unit: '1'
+    dimension: dimensionless
+    shape: N_SN
+    description: Hubble-diagram redshift.
+  - name: distance modulus
+    symbol: mu
+    unit: mag
+    dimension: dimensionless logarithmic
+    shape: N_SN
+    description: Standardized SN distance modulus.
+  - name: covariance
+    symbol: Cov_mu
+    unit: mag^2
+    dimension: dimensionless logarithmic squared
+    shape: N_SN x N_SN
+    description: Statistical plus systematic covariance.

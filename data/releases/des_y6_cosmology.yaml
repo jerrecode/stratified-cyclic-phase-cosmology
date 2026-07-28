@@ -1,0 +1,70 @@
+id: des_y6_cosmology
+title: Dark Energy Survey Year 6 Cosmology Products
+provider: Dark Energy Survey
+release: Y6A2 cosmology
+release_date: 2025-2026
+access_level: public
+scientific_domains:
+- weak_lensing
+- galaxy_clustering
+- photometric_redshifts
+- background
+- growth
+roles:
+- parameter_fit
+- likelihood
+- validation
+- catalog_optional
+landing_page: https://des.ncsa.illinois.edu/releases/y6a2
+documentation: https://www.darkenergysurvey.org/des-y6-cosmology-results-papers/
+citation: Cite the DES Y6 catalog, shear, redshift-calibration, and cosmology papers corresponding to products used.
+license: DES/NCSA release terms and acknowledgements.
+notes:
+- The Y6 release is evolving; lock product paths and release dates.
+- Full catalogs are very large and unnecessary for likelihood-level background work.
+access:
+  method: web_archive_selection
+  base_url: https://des.ncsa.illinois.edu/releases/y6a2
+  authentication: Public products; specific interfaces may impose account or query requirements.
+  instructions:
+  - Select compressed two-point data vectors, covariance, redshift distributions, scale cuts, and likelihood metadata for inference.
+  - Avoid full-catalog downloads unless reproducing catalog-level systematics.
+  - Record all selected product versions.
+  commands: []
+products:
+- id: y6_cosmology_likelihood_products
+  required: false
+  purpose: Constrain growth and geometry after SCPC perturbation predictions are implemented.
+  selection: Two-point data vectors, covariance, n(z), masks/scale cuts, and nuisance priors matching the published likelihood.
+  formats:
+  - FITS
+  - HDF5
+  - SACC
+  - ASCII
+  - YAML
+  expected_scale: MB to GB for compressed likelihood products; catalogs are much larger
+  variables:
+  - name: angular separation
+    symbol: theta
+    unit: arcmin
+    dimension: dimensionless angle
+    shape: N_theta
+    description: Two-point angular separation.
+  - name: cosmic shear correlations
+    symbol: xi_plus_minus
+    unit: '1'
+    dimension: dimensionless
+    shape: N_bin_pair x N_theta
+    description: Tomographic shear correlation functions.
+  - name: redshift distribution
+    symbol: n(z)
+    unit: '1'
+    dimension: dimensionless density in redshift
+    shape: N_bin x N_z
+    description: Tomographic redshift probability density.
+  - name: covariance
+    symbol: Cov
+    unit: mixed
+    dimension: mixed
+    shape: N_obs x N_obs
+    description: Joint two-point covariance.

@@ -1,0 +1,90 @@
+id: nanograv_15yr
+title: NANOGrav 15-Year Data Set and GWB Products
+provider: NANOGrav Collaboration
+release: 15-year
+release_date: '2023'
+access_level: public
+scientific_domains:
+- pulsar_timing
+- nanohertz_gravitational_waves
+- stochastic_background
+roles:
+- parameter_fit_optional
+- validation
+- prediction_comparison
+landing_page: https://nanograv.org/science/data
+documentation: https://nanograv.org/science/data
+citation: Agazie et al. 2023 15-year timing, detector, and GWB papers; cite each derived product used.
+license: Per Zenodo record; preserve release licenses and acknowledgements.
+notes:
+- Core timing release Zenodo record 7967584.
+- Noise spectra/sensitivity record 8092346; free-spectrum KDE record 8060824.
+access:
+  method: zenodo_https_or_globus
+  base_url: https://nanograv.org/science/data
+  authentication: None for Zenodo; Globus account for Globus transfers.
+  instructions:
+  - Use the NANOGrav data page to select timing, sensitivity, KDE, continuous-wave, or new-physics chain products.
+  - Pin the Zenodo record/version and preserve checksums.
+  - Use calibrated timing data only if implementing a PTA likelihood; use sensitivity/KDE products for compressed comparison.
+  commands:
+  - wget --content-disposition --directory-prefix={destination}/nanograv_15yr https://zenodo.org/records/7967584/files/NANOGrav15yr_PulsarTiming_v2.0.0.tar.gz
+products:
+- id: timing_data
+  required: false
+  purpose: Full pulsar-timing likelihood or independent timing analysis.
+  selection: Narrowband or wideband TOAs and timing models, with matching noise definitions.
+  formats:
+  - par
+  - tim
+  - JSON
+  - archive
+  expected_scale: Provider record scale
+  variables:
+  - name: time of arrival
+    symbol: t_TOA
+    unit: s
+    dimension: T
+    shape: N_TOA
+    description: Pulse arrival time.
+  - name: timing residual
+    symbol: delta_t
+    unit: s
+    dimension: T
+    shape: N_TOA
+    description: Observed minus timing-model arrival time.
+  - name: radio frequency
+    symbol: nu
+    unit: MHz
+    dimension: T^-1
+    shape: N_TOA
+    description: Observation frequency.
+- id: gwb_sensitivity_and_kde
+  required: false
+  purpose: Compressed nanohertz stochastic-background comparison.
+  selection: Noise spectra, sensitivity curves, and free-spectrum KDE products matching the 15-year analysis.
+  formats:
+  - ASCII
+  - HDF5
+  - pickle
+  - archive
+  expected_scale: MB to GB
+  variables:
+  - name: frequency
+    symbol: f
+    unit: Hz
+    dimension: T^-1
+    shape: N_frequency
+    description: PTA Fourier frequency.
+  - name: characteristic strain
+    symbol: h_c
+    unit: '1'
+    dimension: dimensionless
+    shape: N_frequency
+    description: Characteristic GWB strain.
+  - name: probability density
+    symbol: p(rho)
+    unit: '1'
+    dimension: inverse parameter measure
+    shape: N_frequency x N_grid
+    description: KDE probability density for free-spectrum amplitudes.

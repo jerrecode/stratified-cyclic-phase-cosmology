@@ -1,0 +1,47 @@
+schema_version: 1
+description: Common late-time redshift grid for standard non-cyclic comparison models.
+grid:
+  z_min: 0.0
+  z_max: 3.0
+  samples: 601
+models:
+  - id: flat_lcdm
+    label: Flat $\Lambda$CDM
+    scientific_status: standard_baseline
+    parameters:
+      H0: 67.4
+      omega_m: 0.315
+      omega_r: 0.00009
+      omega_k: 0.0
+      w0: -1.0
+      wa: 0.0
+  - id: curved_lcdm
+    label: Closed $\Lambda$CDM reference
+    scientific_status: comparison_baseline
+    parameters:
+      H0: 67.4
+      omega_m: 0.315
+      omega_r: 0.00009
+      omega_k: -0.01
+      w0: -1.0
+      wa: 0.0
+  - id: flat_wcdm
+    label: Flat $w$CDM reference
+    scientific_status: phenomenological_comparison
+    parameters:
+      H0: 67.4
+      omega_m: 0.315
+      omega_r: 0.00009
+      omega_k: 0.0
+      w0: -0.9
+      wa: 0.0
+  - id: flat_cpl
+    label: Flat CPL reference
+    scientific_status: phenomenological_comparison
+    parameters:
+      H0: 67.4
+      omega_m: 0.315
+      omega_r: 0.00009
+      omega_k: 0.0
+      w0: -0.9
+      wa: -0.4

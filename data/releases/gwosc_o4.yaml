@@ -1,0 +1,60 @@
+id: gwosc_o4
+title: Gravitational Wave Open Science Center O4 Strain Data
+provider: LIGO-Virgo-KAGRA / GWOSC
+release: O4a and O4b public strain
+release_date: 2023-2025 observations; public pages current 2026
+access_level: public
+scientific_domains:
+- gravitational_waves
+- time_series
+- stochastic_background
+roles:
+- validation
+- prediction_comparison
+- signal_search_optional
+landing_page: https://gwosc.org/O4/
+documentation: https://gwosc.org/O4/
+citation: Cite GWOSC, detector data-release papers, and event/catalog papers used.
+license: CC BY 4.0.
+notes:
+- O4a covers 2023-05-24 to 2024-01-16; O4b covers 2024-04-10 to 2025-01-28 in the reviewed public page.
+- Raw strain is not required until SCPC supplies a detector-domain waveform or stochastic spectrum.
+access:
+  method: gwosc_api_datafind_or_gwpy
+  base_url: https://gwosc.org/O4/
+  authentication: None.
+  instructions:
+  - Select detector, GPS interval, sample rate, and data-quality segments.
+  - Use GWOSC datafind/GWpy tools for bounded intervals rather than mirroring all O4 strain.
+  - Store segment definitions and calibration release in provenance.
+  commands:
+  - python -m pip install gwpy gwosc
+  - python -c "from gwpy.timeseries import TimeSeries; print('Use TimeSeries.fetch_open_data(detector, start, end, sample_rate=...)')"
+products:
+- id: calibrated_strain_segments
+  required: false
+  purpose: Compare a derived SCPC gravitational-wave prediction with calibrated detector strain or stochastic-search products.
+  selection: Only declared detectors, GPS intervals, sample rates, and data-quality categories.
+  formats:
+  - GWF
+  - HDF5
+  expected_scale: Potentially very large; query bounded segments
+  variables:
+  - name: GPS time
+    symbol: t
+    unit: s
+    dimension: T
+    shape: N_time
+    description: Sample timestamp.
+  - name: strain
+    symbol: h(t)
+    unit: '1'
+    dimension: dimensionless
+    shape: N_time
+    description: Calibrated detector strain.
+  - name: frequency
+    symbol: f
+    unit: Hz
+    dimension: T^-1
+    shape: N_frequency
+    description: Fourier frequency.

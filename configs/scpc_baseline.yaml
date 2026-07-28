@@ -1,0 +1,28 @@
+schema_version: 1
+description: Canonical scalar-field SCPC background baseline in natural units.
+model:
+  background:
+    spatial_curvature_k: 1
+    rho_m_ref: 0.03
+    rho_r_ref: 0.0001
+    a_ref: 1.0
+  potential:
+    offset: 3.5
+    amplitude: 0.08
+    strata_count: 4
+    field_scale: 1.0
+initial_conditions:
+  a: 1.0
+  phi: 0.15
+  phi_dot: 0.0
+  branch: 1
+run:
+  t_start: 0.0
+  t_end: 8.0
+  samples: 2001
+  method: DOP853
+  rtol: 1.0e-9
+  atol: 1.0e-11
+acceptance:
+  max_abs_friedmann_constraint_residual: 1.0e-7
+note: This configuration is a numerical baseline and is not asserted to be cyclic.

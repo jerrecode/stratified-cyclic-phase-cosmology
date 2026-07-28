@@ -1,0 +1,82 @@
+id: desi_dr1_bao_cosmology
+title: DESI DR1 BAO Cosmology Results
+provider: Dark Energy Spectroscopic Instrument
+release: DR1 BAO cosmology VAC
+release_date: '2025'
+access_level: public
+scientific_domains:
+- bao
+- large_scale_structure
+- background
+roles:
+- parameter_fit
+- likelihood
+- posterior_comparison
+- model_comparison
+landing_page: https://data.desi.lbl.gov/public/dr1/vac/dr1/bao-cosmo-params
+documentation: https://data.desi.lbl.gov/doc/releases/dr1/vac/bao-cosmo-params/
+citation: DESI Collaboration, DESI 2024 III and VI; cite the release and cosmology papers.
+license: CC BY 4.0 for DESI DR1 public data; include DESI acknowledgement.
+notes:
+- Contains Cobaya chains and iminuit maxima for multiple models and dataset combinations.
+- Prefer the published BAO likelihood/data vector for new SCPC inference rather than fitting to published posterior samples.
+access:
+  method: https_directory
+  base_url: https://data.desi.lbl.gov/public/dr1/vac/dr1/bao-cosmo-params
+  authentication: None.
+  instructions:
+  - Select only the model/dataset directories required for regression or posterior comparison.
+  - For likelihood fitting, retrieve the BAO measurement and covariance products referenced by the DESI likelihood implementation.
+  commands:
+  - wget --mirror --no-parent --no-host-directories --cut-dirs=5 --directory-prefix={destination} https://data.desi.lbl.gov/public/dr1/vac/dr1/bao-cosmo-params/
+products:
+- id: bao_measurements_and_covariance
+  required: true
+  purpose: Constrain background distances and the sound-horizon-scaled expansion history.
+  selection: DESI BAO redshift bins and full covariance used by the selected public likelihood.
+  formats:
+  - ASCII
+  - YAML
+  - FITS
+  - Python likelihood data
+  expected_scale: Small relative to spectra; typically MB
+  variables:
+  - name: effective redshift
+    symbol: z_eff
+    unit: '1'
+    dimension: dimensionless
+    shape: N_bin
+    description: Effective redshift of each tracer bin.
+  - name: transverse BAO ratio
+    symbol: D_M/r_d
+    unit: '1'
+    dimension: dimensionless
+    shape: N_bin
+    description: Transverse comoving distance divided by drag sound horizon.
+  - name: radial BAO ratio
+    symbol: D_H/r_d
+    unit: '1'
+    dimension: dimensionless
+    shape: N_bin
+    description: c/H divided by drag sound horizon.
+  - name: covariance
+    symbol: Cov
+    unit: '1'
+    dimension: dimensionless
+    shape: N_obs x N_obs
+    description: Joint covariance of BAO observables.
+- id: published_chains
+  required: false
+  purpose: Reproduce published parameter contours and compare SCPC posterior projections on identical axes.
+  selection: Cobaya chains for declared model and dataset combinations only.
+  formats:
+  - ASCII
+  - YAML
+  expected_scale: MB to GB
+  variables:
+  - name: posterior samples
+    symbol: theta
+    unit: mixed
+    dimension: mixed
+    shape: N_sample x N_parameter
+    description: Cosmological and nuisance parameter samples.

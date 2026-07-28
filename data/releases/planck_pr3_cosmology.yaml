@@ -1,0 +1,88 @@
+id: planck_pr3_cosmology
+title: Planck 2018 Legacy Cosmology Products
+provider: European Space Agency / Planck Collaboration
+release: PR3
+release_date: '2018-07-17'
+access_level: public
+scientific_domains:
+- cmb
+- background
+- primordial_perturbations
+roles:
+- parameter_fit
+- likelihood
+- validation
+- model_comparison
+landing_page: https://pla.esac.esa.int/
+documentation: https://wiki.cosmos.esa.int/planck-legacy-archive/index.php/CMB_spectrum_%26_Likelihood_Code
+citation: Planck Collaboration, Planck 2018 results; cite each likelihood/product paper used.
+license: ESA archive terms; product pages identify applicable ESA data license.
+notes:
+- PLA bulk requests are asynchronous basket requests; do not invent direct file URLs.
+- Use spectra and likelihood products for fitting; full maps are optional for map-level analyses.
+access:
+  method: interactive_archive_basket
+  base_url: https://pla.esac.esa.int/
+  authentication: Public browsing; an email link may be used for asynchronous basket delivery.
+  instructions:
+  - Open Cosmology in the Planck Legacy Archive.
+  - Select PR3 likelihood, spectra, covariance, and parameter-chain products required by the declared analysis.
+  - Submit the basket and preserve the returned product list and local SHA-256 lock file.
+  commands: []
+products:
+- id: cmb_spectra_and_covariance
+  required: true
+  purpose: CMB likelihood evaluation and comparison of predicted TT, TE, EE, and lensing spectra.
+  selection: PR3 binned/unbinned spectra, covariance, masks, and likelihood support files appropriate to the chosen likelihood.
+  formats:
+  - FITS
+  - ASCII
+  - tar.gz
+  expected_scale: MB to several GB depending on likelihood selection
+  variables:
+  - name: angular multipole
+    symbol: ell
+    unit: '1'
+    dimension: dimensionless
+    shape: provider-defined
+    description: Spherical-harmonic multipole.
+  - name: temperature/polarization spectra
+    symbol: C_ell
+    unit: microK^2
+    dimension: Theta^2
+    shape: multipole bins
+    description: TT, TE, EE or lensing angular spectra.
+  - name: covariance
+    symbol: Cov
+    unit: microK^4
+    dimension: Theta^4
+    shape: N_bin x N_bin
+    description: Spectrum covariance matrix.
+- id: posterior_chains
+  required: false
+  purpose: Published baseline parameter comparisons and regression checks.
+  selection: Only chains matching the exact likelihood combination reported in a comparison figure.
+  formats:
+  - ASCII
+  - paramnames
+  - ranges
+  expected_scale: MB to GB
+  variables:
+  - name: sample weight
+    symbol: weight
+    unit: '1'
+    dimension: dimensionless
+    shape: provider-defined
+    description: Posterior sample weight.
+  - name: log likelihood
+    symbol: -loglike
+    unit: '1'
+    dimension: dimensionless
+    shape: provider-defined
+    description: Stored likelihood statistic.
+  - name: cosmological parameters
+    symbol: theta
+    unit: mixed
+    dimension: mixed
+    shape: N_sample x N_parameter
+    description: Posterior parameter columns.

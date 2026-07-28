@@ -1,0 +1,12 @@
+schema_version: 1
+description: Visualization and event-detection fixture; not an observational cosmological model.
+model: analytic_periodic_scale_factor
+parameters:
+  a_min: 0.2
+  a_max: 1.0
+  period: 1.0
+common_phase_grid:
+  minimum: 0.0
+  maximum: 1.0
+  samples: 1001
+scientific_status: pipeline_test_fixture_only

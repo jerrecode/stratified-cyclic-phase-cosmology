@@ -1,0 +1,56 @@
+id: planck_pr4_npipe
+title: Planck PR4 NPIPE Frequency Maps
+provider: European Space Agency / Planck Collaboration
+release: PR4
+release_date: '2021-06-22'
+access_level: public
+scientific_domains:
+- cmb
+- maps
+roles:
+- validation
+- visualization
+- map_level_optional
+landing_page: https://pla.esac.esa.int/
+documentation: https://pla.esac.esa.int/
+citation: Planck Collaboration, NPIPE processing paper, A&A 643 A42 (2020).
+license: ESA archive terms.
+notes:
+- Optional for the initial background and likelihood pipeline.
+- Use archive map search with Only Legacy disabled and PR4 selected.
+access:
+  method: interactive_archive_basket
+  base_url: https://pla.esac.esa.int/
+  authentication: Public; asynchronous basket delivery may require email.
+  instructions:
+  - Open Maps or Advanced Maps Search.
+  - Disable Only Legacy and select PR4.
+  - Request only frequencies, splits, masks, and beams needed by the declared map-level test.
+  commands: []
+products:
+- id: frequency_maps
+  required: false
+  purpose: Map-level residual, topology, anisotropy, and visualization studies.
+  selection: Explicit frequency channels and splits; include beams and masks.
+  formats:
+  - FITS/HEALPix
+  expected_scale: Large; select subsets rather than mirroring the archive
+  variables:
+  - name: sky temperature
+    symbol: T
+    unit: K_CMB
+    dimension: Theta
+    shape: N_pix
+    description: HEALPix temperature map.
+  - name: Stokes Q
+    symbol: Q
+    unit: K_CMB
+    dimension: Theta
+    shape: N_pix
+    description: Linear polarization component.
+  - name: Stokes U
+    symbol: U
+    unit: K_CMB
+    dimension: Theta
+    shape: N_pix
+    description: Linear polarization component.

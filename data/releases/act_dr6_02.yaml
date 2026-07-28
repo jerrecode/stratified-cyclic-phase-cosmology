@@ -1,0 +1,84 @@
+id: act_dr6_02
+title: Atacama Cosmology Telescope DR6.02
+provider: NASA LAMBDA / ACT Collaboration
+release: DR6.02
+release_date: '2025'
+access_level: public
+scientific_domains:
+- cmb
+- maps
+- primordial_perturbations
+- clusters
+roles:
+- parameter_fit
+- likelihood
+- validation
+- model_comparison
+- visualization
+landing_page: https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/index.html
+documentation: https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/index.html
+citation: ACT DR6 map, power-spectrum, and cosmology papers corresponding to selected products.
+license: NASA LAMBDA public-data terms and ACT acknowledgement.
+notes:
+- DR6.02 includes maps, beams, NILC products, passbands, PSPIPE spectra/covariance/SACC, and cosmology chains.
+- LAMBDA provides wget/curl bulk-download scripts on product pages; use those rather than scraping guessed URLs.
+access:
+  method: lambda_product_pages_or_globus
+  base_url: https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/index.html
+  authentication: None for LAMBDA downloads; Globus account for Globus transfer.
+  instructions:
+  - Use the PSPIPE spectra/covariance or SACC product page for likelihood work.
+  - Use the MCMC chain product page for published-posterior comparisons.
+  - Use Globus endpoint 53b2a147-ae9d-4bbf-9d18-3b46d133d4bb for large map subsets.
+  commands: []
+products:
+- id: pspipe_spectra_covariance_sacc
+  required: false
+  purpose: High-resolution CMB likelihood and predicted-spectrum validation.
+  selection: PSPIPE spectra, covariance, binning, window functions, and matching SACC likelihood files.
+  formats:
+  - SACC/FITS
+  - ASCII
+  - archive
+  expected_scale: MB to hundreds of MB; best-fit map products may be GB
+  variables:
+  - name: multipole
+    symbol: ell
+    unit: '1'
+    dimension: dimensionless
+    shape: N_band
+    description: Angular multipole or band center.
+  - name: bandpowers
+    symbol: D_ell
+    unit: microK^2
+    dimension: Theta^2
+    shape: N_spectrum x N_band
+    description: Binned TT/TE/EE power.
+  - name: covariance
+    symbol: Cov
+    unit: microK^4
+    dimension: Theta^4
+    shape: N_obs x N_obs
+    description: Bandpower covariance.
+  - name: window functions
+    symbol: W_bell
+    unit: '1'
+    dimension: dimensionless
+    shape: N_band x N_ell
+    description: Map theory spectra to measured bandpowers.
+- id: cosmology_chains
+  required: false
+  purpose: Compare published LCDM and extended-model constraints with SCPC projections.
+  selection: LCDM, curvature, w0, w0-wa or other explicitly declared chain groups.
+  formats:
+  - archive
+  - ASCII
+  - YAML
+  expected_scale: Tens of MB to several GB by model family
+  variables:
+  - name: posterior samples
+    symbol: theta
+    unit: mixed
+    dimension: mixed
+    shape: N_sample x N_parameter
+    description: Cosmological and nuisance samples.

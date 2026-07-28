@@ -1,0 +1,41 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+\usepackage[backend=biber,style=numeric-comp,sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+\newcommand{\SCPC}{\mathrm{SCPC}}
+\newcommand{\Mpl}{M_{\mathrm{Pl}}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\title{Stratified Cyclic Phase Cosmology:\\Covariant Formulation and Conditions for Nonsingular Cyclic Solutions}
+\author{Jeremy Erich Resch}
+\date{Draft generated from repository version 0.1.0}
+
+\begin{document}
+\maketitle
+\input{sections/00_abstract}
+\input{sections/01_introduction}
+\input{sections/02_definitions}
+\input{sections/03_covariant_theory}
+\input{sections/04_background}
+\input{sections/05_numerics}
+\input{sections/06_data}
+\input{sections/07_results}
+\input{sections/08_discussion}
+\input{sections/09_conclusion}
+
+\appendix
+\input{appendices/A_conventions}
+\input{appendices/B_data_manifest}
+\input{appendices/C_numerical_validation}
+
+\printbibliography
+\end{document}
