@@ -34,7 +34,10 @@ from scpc.scans.transactions import (
     replace_index_row_atomic,
     write_content_addressed_netcdf,
 )
-from scpc.visualization.scans import plot_scan_outcome_map
+from scpc.visualization.scans import (
+    plot_scan_outcome_map,
+    validate_outcome_map_coordinates,
+)
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
@@ -103,17 +106,36 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def _configured_outcome_map(scan: dict[str, Any], output: Path, index_path: Path) -> Path | None:
+def _outcome_map_filename(scan: dict[str, Any]) -> Path | None:
     visualization = scan.get("visualization")
     if visualization is None:
         return None
     filename = Path(str(visualization.get("outcome_map", "outcome_map.png")))
     if filename.is_absolute() or ".." in filename.parts:
         raise ValueError("visualization.outcome_map must remain inside the scan output directory")
-    destination = output / filename
+    return filename
+
+
+def _preflight_outcome_map(scan: dict[str, Any], points: tuple[ScanPoint, ...]) -> None:
+    visualization = scan.get("visualization")
+    if visualization is None:
+        return
+    _outcome_map_filename(scan)
+    validate_outcome_map_coordinates(
+        [point.coordinates for point in points],
+        x_axis=str(visualization["x_axis"]),
+        y_axis=str(visualization["y_axis"]),
+    )
+
+
+def _configured_outcome_map(scan: dict[str, Any], output: Path, index_path: Path) -> Path | None:
+    visualization = scan.get("visualization")
+    filename = _outcome_map_filename(scan)
+    if visualization is None or filename is None:
+        return None
     return plot_scan_outcome_map(
         index_path,
-        destination,
+        output / filename,
         x_axis=str(visualization["x_axis"]),
         y_axis=str(visualization["y_axis"]),
         annotate=bool(visualization.get("annotate", True)),
@@ -146,6 +168,7 @@ def run_background_scan(
         max_runs=int(scan.get("max_runs", 10000)),
         identity_namespace=str(scan.get("identity_namespace", "scpc-background-v1")),
     )
+    _preflight_outcome_map(scan, points)
 
     output = Path(output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
