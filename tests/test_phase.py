@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from scpc.models.phase import PeriodicPotential, SCPCParameters, integrate_scpc
 
@@ -9,6 +10,19 @@ def test_periodic_potential_derivative() -> None:
     step = 1e-6
     numerical = (potential.value(phi + step) - potential.value(phi - step)) / (2 * step)
     assert np.isclose(potential.derivative(phi), numerical, rtol=1e-6)
+
+
+def test_nonintegral_strata_count_is_rejected() -> None:
+    with pytest.raises(ValueError, match="strata_count must be an integer"):
+        PeriodicPotential(strata_count=1.5, target_space="circle")  # type: ignore[arg-type]
+
+
+def test_circle_potential_is_single_valued_after_full_circumference() -> None:
+    potential = PeriodicPotential(strata_count=3, field_scale=1.7, target_space="circle")
+    circumference = potential.target_circumference
+    assert circumference is not None
+    phi = 0.31
+    assert np.isclose(potential.value(phi), potential.value(phi + circumference))
 
 
 def test_exact_flat_de_sitter_limit() -> None:
