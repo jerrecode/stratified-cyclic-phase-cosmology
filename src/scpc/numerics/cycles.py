@@ -165,26 +165,13 @@ def cycle_return_metrics(
     return tuple(metrics)
 
 
-def classify_recurrence(
+def _classify_same_kind(
     metrics: tuple[CycleReturnMetric, ...],
     *,
-    tolerance: float = 1.0e-3,
+    tolerance: float,
 ) -> str:
-    """Summarize one run's return sequence without claiming recurrence.
-
-    At least two return metrics, requiring at least three turning points of the
-    same kind, are required for a positive close-return summary. A recurrence
-    candidate additionally requires reproduction across solver tolerances and
-    independent methods, which is intentionally outside this function.
-    """
-
-    if tolerance <= 0.0:
-        raise ValueError("tolerance must be positive")
-    if not metrics:
-        return "insufficient_turning_points"
     if len(metrics) < 2:
         return "insufficient_repeated_returns"
-
     errors = np.asarray([metric.maximum_error for metric in metrics], dtype=float)
     if np.any(~np.isfinite(errors)):
         return "invalid_return_metric"
@@ -194,3 +181,28 @@ def classify_recurrence(
     if np.all(np.diff(errors) < 0.0):
         return "return_errors_decreasing_but_unresolved"
     return "nonclosing_or_drifting_returns"
+
+
+def classify_return_sequences(
+    metrics: tuple[CycleReturnMetric, ...],
+    *,
+    tolerance: float = 1.0e-3,
+) -> dict[str, str]:
+    """Summarize each event kind independently without claiming recurrence.
+
+    At least two return metrics of one kind, requiring at least three turning
+    points of that same kind, are required for a positive close-return summary.
+    A recurrence candidate additionally requires reproduction across solver
+    tolerances and independent methods, which is intentionally outside this
+    function.
+    """
+
+    if tolerance <= 0.0:
+        raise ValueError("tolerance must be positive")
+    grouped: dict[str, list[CycleReturnMetric]] = {}
+    for metric in metrics:
+        grouped.setdefault(metric.kind, []).append(metric)
+    return {
+        kind: _classify_same_kind(tuple(kind_metrics), tolerance=tolerance)
+        for kind, kind_metrics in sorted(grouped.items())
+    }
