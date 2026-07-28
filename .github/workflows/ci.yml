@@ -12,9 +12,22 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e '.[dev]'
-      - run: ruff check src tests scripts
-      - run: pytest --cov=scpc --cov-report=term-missing
-      - run: scpc validate-manifest
-      - run: python scripts/reproduce.py
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+      - name: Install project
+        run: python -m pip install -e '.[dev]'
+      - name: Lint Python
+        id: ruff
+        run: ruff check src tests scripts --output-format=concise 2>&1 | tee ruff-report.txt
+      - name: Upload Ruff diagnostics
+        if: failure() && steps.ruff.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-diagnostics
+          path: ruff-report.txt
+      - name: Run tests
+        run: pytest --cov=scpc --cov-report=term-missing
+      - name: Validate data manifest
+        run: scpc validate-manifest
+      - name: Reproduce baseline products
+        run: python scripts/reproduce.py
