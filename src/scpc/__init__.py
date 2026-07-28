@@ -1,7 +1,7 @@
 """Stratified Cyclic Phase Cosmology scientific package."""
 
-from .models.standard import ExpansionParameters, FLRWExpansion
 from .models.phase import PeriodicPotential, SCPCParameters, integrate_scpc
+from .models.standard import ExpansionParameters, FLRWExpansion
 
 __all__ = [
     "ExpansionParameters",

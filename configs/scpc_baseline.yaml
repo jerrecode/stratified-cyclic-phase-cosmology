@@ -11,6 +11,7 @@ model:
     amplitude: 0.08
     strata_count: 4
     field_scale: 1.0
+    target_space: real
 initial_conditions:
   a: 1.0
   phi: 0.15
@@ -25,4 +26,5 @@ run:
   atol: 1.0e-11
 acceptance:
   max_abs_friedmann_constraint_residual: 1.0e-7
+  max_return_error: 1.0e-3
 note: This configuration is a numerical baseline and is not asserted to be cyclic.

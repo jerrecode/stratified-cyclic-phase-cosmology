@@ -1,2 +1,13 @@
 \section{Numerical validation}
-The test suite includes the Einstein--de Sitter expansion law, monotonic luminosity distance, an exact flat de Sitter scalar-field limit, potential-derivative verification, and manifest-schema validation. Future releases will add convergence, Poincar\'e-map, Floquet, perturbation-stability, and synthetic parameter-recovery tests.
+\label{app:numerical-validation}
+
+The test suite includes the Einstein--de Sitter expansion law, monotonic luminosity distance, an exact flat de Sitter scalar-field limit, potential-derivative verification, topology-aware return metrics, and manifest-schema validation.
+
+The background verification workflow executes a declared tolerance ladder and an independent-integrator comparison. For a stored state component $y$, the reported normalized error is
+\begin{equation}
+  \epsilon_y = \frac{\lVert y-y_{\mathrm{ref}}\rVert_\infty}
+  {\max(\lVert y_{\mathrm{ref}}\rVert_\infty,\epsilon_{\mathrm{floor}})}.
+\end{equation}
+Solver verification always compares the unwrapped scalar trajectory. A displacement by one or more periods of the potential is therefore retained, because a periodic potential alone does not identify the scalar target space. This prevents distinct separatrix crossings or winding histories from being hidden by a modulo comparison. The verification report records componentwise errors, the maximum Friedmann-constraint residual, configuration hashes, solver methods, tolerances, and predeclared acceptance thresholds.
+
+Repeated turning points are assessed by comparing consecutive states of the same event class. Their state vectors are taken directly from the adaptive solver's root-localized event output and serialized separately from the uniformly sampled plotting trajectory. Consequently, return metrics do not depend on the requested output-sampling density. For the baseline real scalar, the full field displacement is retained and normalized by the adjacent-minimum spacing of the potential. A circular target space must be declared explicitly; adjacent minima remain distinct, while a return after one full target circumference is recorded as a nonzero-winding return. Return counts and error summaries are evaluated independently for bounces and turnarounds. Even repeated close returns in one integration are not a proof of recurrence or a stable limit cycle. Reproduction across tolerances and independent solvers, Poincar\'e maps, variational equations, Floquet multipliers, perturbation-stability analysis, and synthetic parameter recovery remain required later-stage tests.

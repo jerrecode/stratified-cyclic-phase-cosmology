@@ -1,0 +1,27 @@
+schema_version: 1
+description: Numerical verification protocol for the canonical SCPC background.
+baseline_config: configs/scpc_baseline.yaml
+tolerance_ladder:
+  method: DOP853
+  levels:
+    - label: coarse
+      rtol: 1.0e-6
+      atol: 1.0e-8
+    - label: medium
+      rtol: 1.0e-8
+      atol: 1.0e-10
+    - label: reference
+      rtol: 1.0e-10
+      atol: 1.0e-12
+cross_solver:
+  methods: [DOP853, RK45]
+  reference_method: DOP853
+  rtol: 1.0e-9
+  atol: 1.0e-11
+acceptance:
+  max_constraint_residual: 1.0e-7
+  max_medium_to_reference_error: 1.0e-5
+  max_cross_solver_error: 1.0e-5
+notes:
+  - Passing these thresholds verifies numerical consistency only.
+  - It does not establish physical viability, recurrence, or perturbative stability.

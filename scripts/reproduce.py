@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Regenerate the initial paper data products and figures."""
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 from scpc.workflows import compare_models, run_scpc_background
 
