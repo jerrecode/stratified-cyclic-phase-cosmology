@@ -7,10 +7,8 @@ steps:
     command: scpc validate-manifest
   - id: run-tests
     command: pytest
-  - id: compare-models
-    command: scpc compare-models --config configs/model_comparisons.yaml --output results/model_comparison
-  - id: run-background
-    command: scpc run-background --config configs/scpc_baseline.yaml --output results/scpc_baseline
+  - id: reproduce-products
+    command: python scripts/reproduce.py
   - id: build-paper
     command: latexmk -pdf -cd paper/main.tex
 outputs:
