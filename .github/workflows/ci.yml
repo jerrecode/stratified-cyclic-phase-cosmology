@@ -37,10 +37,19 @@ jobs:
         run: python scripts/reproduce.py
       - name: Verify background numerics
         run: scpc verify-background
+      - name: Run Stage 1 smoke scan
+        run: scpc scan-background
       - name: Upload background verification
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: scpc-background-verification
           path: results/scpc_verification
+          if-no-files-found: error
+      - name: Upload Stage 1 smoke scan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scpc-stage1-smoke-scan
+          path: results/stage1_smoke_scan
           if-no-files-found: error
