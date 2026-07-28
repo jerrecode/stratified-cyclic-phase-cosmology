@@ -32,8 +32,6 @@ class FailureClass(StrEnum):
 
 @dataclass(frozen=True)
 class RunRecord:
-    """Serializable index record for one immutable experiment specification."""
-
     run_id: str
     run_sha256: str
     status: RunStatus
@@ -57,6 +55,7 @@ class RunRecord:
     termination_threshold: float | None = None
     termination_observed: float | None = None
     termination_units: str | None = None
+    termination_boundaries: tuple[dict[str, Any], ...] = ()
     solver_metadata: dict[str, Any] | None = None
     trajectory_path: str | None = None
 
@@ -65,17 +64,17 @@ class RunRecord:
         mapping["status"] = self.status.value
         mapping["failure_class"] = self.failure_class.value if self.failure_class else None
         mapping["event_sequence"] = list(self.event_sequence)
+        mapping["termination_boundaries"] = [dict(item) for item in self.termination_boundaries]
         return mapping
 
     def to_flat_row(self) -> dict[str, Any]:
-        """Return a CSV-safe row while preserving nested values as JSON."""
-
         mapping = self.to_mapping()
         for key in (
             "coordinates",
             "specification",
             "event_sequence",
             "return_sequence_classifications",
+            "termination_boundaries",
             "solver_metadata",
         ):
             mapping[key] = json.dumps(
@@ -128,6 +127,7 @@ def completed_run_record(
             else None
         ),
         termination_units=solution.termination_units,
+        termination_boundaries=tuple(dict(item) for item in solution.termination_boundaries),
         solver_metadata=dict(solution.solver_metadata),
         trajectory_path=str(trajectory_path) if trajectory_path is not None else None,
     )
@@ -159,8 +159,6 @@ def failed_run_record(
     *,
     coordinates: dict[str, Any] | None = None,
 ) -> RunRecord:
-    """Record an exception without promoting it to a physical singularity."""
-
     failure_class = classify_exception(error)
     return RunRecord(
         run_id=identity.run_id,

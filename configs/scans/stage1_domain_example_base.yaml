@@ -24,5 +24,7 @@ run:
   method: DOP853
   rtol: 1.0e-10
   atol: 1.0e-12
+  max_step: 0.025
+  domain_check_substeps: 16
   domain:
     min_scale_factor: 0.8

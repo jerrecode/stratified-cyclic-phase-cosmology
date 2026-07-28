@@ -1,19 +1,18 @@
-"""Conservative outcome classification for homogeneous background trajectories.
-
-The classifier separates numerical invalidity, declared domain termination,
-unresolved event detection, and physical trajectory morphology. It does not
-infer a spacetime singularity from a solver exception or domain boundary and
-does not label repeated turning points as a cyclic cosmology.
-"""
+"""Conservative outcome classification for homogeneous background trajectories."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 import numpy as np
 
-from scpc.models.phase import DOMAIN_TERMINATION_KINDS, SCPCSolution
+from scpc.models.phase import (
+    DOMAIN_TERMINATION_KINDS,
+    SCPCSolution,
+    evaluate_domain_boundary,
+)
 from scpc.numerics.cycles import classify_return_sequences, cycle_return_metrics
 from scpc.scans.errors import ResultIntegrityError
 
@@ -49,8 +48,6 @@ RETAINABLE_OUTCOMES = (
 
 @dataclass(frozen=True)
 class OutcomeAssessment:
-    """Machine-readable summary of one successfully returned solution."""
-
     outcome: OutcomeClass
     reason: str
     numerically_valid: bool
@@ -148,12 +145,58 @@ def _unmatched_sampled_crossings(
     return tuple(unmatched)
 
 
+def _event_tolerance(solution: SCPCSolution, scale: float) -> float:
+    rtol = float(solution.solver_metadata.get("solver_rtol", 1.0e-9))
+    atol = float(solution.solver_metadata.get("solver_atol", 1.0e-11))
+    return max(100.0 * atol, 1.0e-12) + max(100.0 * rtol, 1.0e-9) * max(1.0, scale)
+
+
+def _validate_boundary_record(
+    boundary: dict[str, Any],
+    state: np.ndarray,
+    solution: SCPCSolution,
+) -> dict[str, Any]:
+    try:
+        kind = str(boundary["kind"])
+        threshold = float(boundary["threshold"])
+        recorded_observed = float(boundary["observed"])
+        units = str(boundary["units"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ResultIntegrityError("Termination boundary record is malformed") from error
+    if kind not in DOMAIN_TERMINATION_KINDS:
+        raise ResultIntegrityError(f"Unknown physical-domain termination kind: {kind}")
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ResultIntegrityError("Termination threshold must be finite and positive")
+    if not np.isfinite(recorded_observed) or recorded_observed <= 0.0:
+        raise ResultIntegrityError("Termination observed value must be finite and positive")
+    recomputed, expected_units = evaluate_domain_boundary(kind, state, solution.parameters)
+    tolerance = _event_tolerance(solution, max(abs(recomputed), abs(threshold)))
+    if units != expected_units:
+        raise ResultIntegrityError(
+            f"Termination units for {kind} are {units!r}, expected {expected_units!r}"
+        )
+    if abs(recorded_observed - recomputed) > tolerance:
+        raise ResultIntegrityError(
+            f"Recorded termination observable for {kind} disagrees with the final state"
+        )
+    if abs(recomputed - threshold) > tolerance:
+        raise ResultIntegrityError(
+            f"Termination state does not lie on the recorded {kind} threshold"
+        )
+    return {
+        "kind": kind,
+        "threshold": threshold,
+        "observed": recorded_observed,
+        "units": units,
+    }
+
+
 def _validate_termination_metadata(
     solution: SCPCSolution,
     arrays: tuple[np.ndarray, ...],
-) -> None:
+) -> tuple[dict[str, Any], ...]:
     kind = solution.termination_kind
-    metadata = (
+    scalar_metadata = (
         solution.termination_time,
         solution.termination_state_vector,
         solution.termination_threshold,
@@ -161,7 +204,7 @@ def _validate_termination_metadata(
         solution.termination_units,
     )
     if kind is None:
-        if any(value is not None for value in metadata):
+        if any(value is not None for value in scalar_metadata) or solution.termination_boundaries:
             raise ResultIntegrityError(
                 "Nonterminated solution contains partial termination metadata"
             )
@@ -169,10 +212,8 @@ def _validate_termination_metadata(
             raise ResultIntegrityError(
                 "Integration ended before its requested endpoint without a declared termination"
             )
-        return
+        return ()
 
-    if kind not in DOMAIN_TERMINATION_KINDS:
-        raise ResultIntegrityError(f"Unknown physical-domain termination kind: {kind}")
     if (
         solution.termination_time is None
         or solution.termination_state_vector is None
@@ -180,28 +221,21 @@ def _validate_termination_metadata(
         or solution.termination_observed is None
         or not solution.termination_units
         or solution.requested_end_time is None
+        or not solution.termination_boundaries
     ):
         raise ResultIntegrityError(
-            "Physical-domain termination requires complete time, state, threshold, units, "
-            "observed value, and requested-end metadata"
+            "Physical-domain termination requires complete scalar and boundary-set metadata"
         )
 
     termination_time = float(solution.termination_time)
-    threshold = float(solution.termination_threshold)
-    observed = float(solution.termination_observed)
     state = np.asarray(solution.termination_state_vector, dtype=float)
     if not np.isfinite(termination_time):
         raise ResultIntegrityError("Termination time must be finite")
     if state.shape != (4,) or np.any(~np.isfinite(state)):
         raise ResultIntegrityError("Termination state must be a finite vector with shape (4,)")
-    if not np.isfinite(threshold) or threshold <= 0.0:
-        raise ResultIntegrityError("Termination threshold must be finite and positive")
-    if not np.isfinite(observed) or observed <= 0.0:
-        raise ResultIntegrityError("Termination observed value must be finite and positive")
 
     time = arrays[0]
-    scale = max(1.0, abs(termination_time), abs(float(time[-1])))
-    time_tolerance = 128.0 * np.finfo(float).eps * scale
+    time_tolerance = _event_tolerance(solution, max(abs(termination_time), abs(float(time[-1]))))
     if not np.isclose(time[-1], termination_time, rtol=0.0, atol=time_tolerance):
         raise ResultIntegrityError("Exact termination time must be the final stored time")
     final_state = np.asarray([arrays[1][-1], arrays[2][-1], arrays[3][-1], arrays[4][-1]])
@@ -211,6 +245,28 @@ def _validate_termination_metadata(
         raise ResultIntegrityError(
             "Domain-terminated solution cannot be marked complete to the requested endpoint"
         )
+
+    validated = tuple(
+        _validate_boundary_record(dict(boundary), state, solution)
+        for boundary in solution.termination_boundaries
+    )
+    kinds = tuple(boundary["kind"] for boundary in validated)
+    if kinds != tuple(sorted(set(kinds))):
+        raise ResultIntegrityError(
+            "Termination boundary records must be unique and lexically ordered"
+        )
+    primary = validated[0]
+    primary_tolerance = _event_tolerance(
+        solution,
+        max(abs(primary["observed"]), abs(primary["threshold"])),
+    )
+    if kind != primary["kind"] or solution.termination_units != primary["units"]:
+        raise ResultIntegrityError("Primary termination labels do not match the boundary set")
+    if abs(float(solution.termination_threshold) - primary["threshold"]) > primary_tolerance:
+        raise ResultIntegrityError("Primary termination threshold does not match the boundary set")
+    if abs(float(solution.termination_observed) - primary["observed"]) > primary_tolerance:
+        raise ResultIntegrityError("Primary termination observation does not match the boundary set")
+    return validated
 
 
 def _assessment(
@@ -297,7 +353,7 @@ def assess_solution(
             max_constraint=max_constraint,
         )
 
-    _validate_termination_metadata(solution, arrays)
+    termination_boundaries = _validate_termination_metadata(solution, arrays)
 
     if np.any(arrays[1] <= 0.0):
         return _assessment(
@@ -352,16 +408,14 @@ def assess_solution(
         tolerance=return_tolerance,
     )
 
-    if solution.termination_kind is not None:
+    if termination_boundaries:
+        kinds = ", ".join(boundary["kind"] for boundary in termination_boundaries)
         return _assessment(
             outcome=OutcomeClass.PHYSICAL_DOMAIN_TERMINATION,
             reason=(
-                f"Integration reached declared domain boundary {solution.termination_kind} "
-                f"at t={float(solution.termination_time):.6g}: observed "
-                f"{float(solution.termination_observed):.6g} {solution.termination_units}, "
-                f"threshold {float(solution.termination_threshold):.6g} "
-                f"{solution.termination_units}. This is an analysis boundary, not a "
-                "spacetime singularity claim."
+                f"Integration reached declared domain boundary set [{kinds}] at "
+                f"t={float(solution.termination_time):.6g}. This is an analysis boundary, "
+                "not a spacetime singularity claim."
             ),
             numerically_valid=False,
             event_sequence=event_sequence,

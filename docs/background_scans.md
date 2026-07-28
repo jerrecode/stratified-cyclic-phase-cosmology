@@ -15,37 +15,17 @@ The initial runner is deliberately serial. Deterministic correctness, complete f
 
 ## Protocol structure
 
-A scan protocol declares:
+A scan protocol declares a complete background base configuration, explicit dotted paths to vary, a maximum Cartesian run count, numerical classification thresholds, trajectory-retention policy, optional two-axis visualization, and resume policy. Unknown controls, empty axes, nonfinite numbers, unsupported statuses, negative limits, and unknown retention outcomes are rejected before integration.
 
-- one complete background base configuration;
-- explicit dotted paths to vary;
-- finite value lists for each axis;
-- a maximum Cartesian run count;
-- numerical classification thresholds;
-- trajectory-retention outcomes and a hard retention limit;
-- optional two-axis outcome-map settings;
-- resume and rerun policy.
-
-The protocol is validated against `configs/scans/scan.schema.json`. Unknown controls, empty axes, nonfinite numbers, unsupported rerun statuses, negative limits, and unknown retention outcomes are rejected before any integration begins.
-
-When an outcome map is requested, preflight additionally requires exactly two numeric scan axes, two or more distinct values on each axis, unique coordinate pairs, and a complete Cartesian grid. Misspelled axes, singleton dimensions, and hidden third dimensions fail before the output directory or any integration is created.
+Outcome-map preflight requires exactly two numeric axes, at least two distinct values on each axis, unique coordinate pairs, and a complete Cartesian grid. Invalid visualization plans fail before an output directory or numerical run is created.
 
 ## Run identities
 
-Every complete numerical specification receives a SHA-256 identity before execution. Values are first normalized to the types consumed by the executor. Mapping keys are sorted and floating-point values are encoded by their exact hexadecimal representation. Consequently:
-
-- mapping insertion order cannot change a run identity;
-- adjacent representable floating-point values remain distinct;
-- execution-equivalent declarations such as an integer sample count written as `101` or `101.0` share one identity;
-- nonintegral values for integer execution fields are rejected;
-- solver method, tolerances, domain thresholds, model parameters, and initial conditions are part of the experiment identity;
-- duplicate complete executable specifications are rejected.
-
-The short `run_id` is a 24-hex-character prefix for filenames and tables. The full SHA-256 digest remains in the index and resume metadata.
+Every complete numerical specification receives a SHA-256 identity before execution. Values are normalized to the types consumed by the executor, keys are sorted, and floating-point values are encoded exactly. Solver method, tolerances, domain thresholds, `max_step`, dense-check subdivision count, model parameters, and initial conditions are part of the identity. Execution-equivalent duplicate declarations are rejected.
 
 ## Declared integration domain
 
-A background run may declare root-localized analysis boundaries under `run.domain`:
+A run may declare analysis boundaries and the temporal resolution used to verify them:
 
 ```yaml
 run:
@@ -55,6 +35,8 @@ run:
   method: DOP853
   rtol: 1.0e-10
   atol: 1.0e-12
+  max_step: 0.025
+  domain_check_substeps: 16
   domain:
     min_scale_factor: 0.8
     max_scale_factor: 10.0
@@ -65,62 +47,40 @@ run:
     max_abs_field_velocity: 20.0
 ```
 
-Every configured threshold must be finite and positive. `min_scale_factor` must be smaller than `max_scale_factor`. A coordinate bound on the field is rejected for a circular target space because it is not invariant under the compact identification.
+Every threshold and `max_step` must be finite and positive. `domain_check_substeps` must be an integer of at least two. `min_scale_factor` must be smaller than `max_scale_factor`. A coordinate field bound is rejected for a circular target because it is not invariant under the compact identification.
 
-Reaching a configured surface terminates the integration at the solver-localized root. The exact termination time and state are appended to the stored trajectory even when the root lies between plotting samples. The record contains:
+### Root events and dense-step verification
 
-- termination kind;
-- exact time;
-- threshold;
-- observed boundary value;
-- units;
-- whether the requested endpoint was reached.
+SciPy root events localize endpoint sign changes, but a nonmonotonic observable can leave and re-enter a domain within one accepted step. SCPC therefore:
 
-A domain-terminated run is returned successfully by the solver but is classified as `physical_domain_termination` and rejected for full-interval morphology. It is not a solver failure and is not a spacetime-singularity claim. Ending before the requested endpoint without a declared termination event is a result-integrity error.
+1. requires a finite solver `max_step` whenever domain surfaces are configured;
+2. requests dense solver output on the internal accepted-step grid;
+3. evaluates every configured residual at `domain_check_substeps + 1` points in every accepted step;
+4. root-localizes the first sampled positive-to-nonpositive residual bracket;
+5. uses the earliest of the solver event and dense-step detection;
+6. truncates the uniformly sampled output at that exact state.
 
-The reproducible one-axis example is `configs/scans/stage1_domain_example.yaml`.
+Production results must demonstrate convergence under smaller `max_step` and larger `domain_check_substeps`. These controls bound the unresolved temporal scale; they do not constitute a theorem that arbitrary infinitely rapid excursions are impossible.
+
+### Coincident surfaces
+
+At the first terminal state, every configured observable is recomputed. All surfaces agreeing with their thresholds within solver-derived event tolerance are serialized as a unique, lexically ordered boundary set. The first lexical kind supplies backward-compatible scalar fields, while the full set remains authoritative. This prevents correlated limits from being lost through solver event ordering.
+
+The exact termination time and state are appended even when they lie between plotting samples. The record contains the complete coincident boundary set, primary kind, exact time and state, thresholds, observed values, units, requested endpoint, and completion flag.
+
+A domain-terminated run is returned successfully by the solver but classified as `physical_domain_termination` and rejected for full-interval morphology. It is not a solver failure and is not a spacetime-singularity claim. Ending early without complete declared termination metadata is a result-integrity error.
+
+The reproducible example is `configs/scans/stage1_domain_example.yaml`.
 
 ## Outcome hierarchy
 
-Returned trajectories are classified only after checking:
+Returned trajectories are classified only after validating array shape and finiteness, time ordering, turning-event consistency, exact termination metadata, positivity of the scale factor, Friedmann residual, degenerate roots, and complete sampled Hubble-crossing reconciliation. Every recorded termination observable is recomputed from the final state and model parameters; corrupted kind, value, threshold, or units are rejected as result-integrity failures.
 
-1. all stored arrays are nonempty, one-dimensional, equal-length, and finite;
-2. stored times are strictly increasing;
-3. event times and event kinds are internally consistent;
-4. termination metadata is complete and agrees with the exact final state;
-5. the scale factor remains positive;
-6. the Friedmann residual remains below the declared threshold;
-7. no degenerate turning root is present;
-8. every detectable sampled Hubble sign transition, including transitions across zero plateaus, is represented by a matching root-localized event.
+Morphology classes include monotonic expansion or contraction, quasi-static behavior, recollapse, one-off bounce, one bounce-turnaround pair, and repeated turning points. Repeated turning points are not a cyclicity claim.
 
-The current classes include:
+## Failure and rejection records
 
-- physical-domain termination before the requested endpoint;
-- monotonic expansion;
-- monotonic contraction;
-- quasi-static or ambiguous behavior without a recorded crossing;
-- recollapse without a bounce in the integrated interval;
-- one-off bounce;
-- one bounce and one turnaround;
-- repeated turning points;
-- explicitly rejected numerical-integrity classes.
-
-Repeated turning points are not labelled a cyclic solution. Same-kind return diagnostics remain separate and do not establish recurrence or stability.
-
-## Failure records
-
-Every planned run remains represented even when no accepted solution is returned. Exceptions and rejected trajectories are classified conservatively as:
-
-- invalid initial Friedmann constraint;
-- configuration error;
-- physical-domain failure outside the declared event system;
-- solver failure;
-- result-integrity error;
-- output-serialization error;
-- unexpected error;
-- returned but rejected classes such as declared domain termination, constraint violation, or nonfinite state.
-
-A solver, integrity, output, or domain-boundary record is not called a spacetime singularity. The exact exception type and message are preserved for audit and later reclassification.
+Every planned run remains represented. Distinct records cover invalid initial constraints, configuration errors, undeclared physical-domain failure, solver failure, result-integrity failure, output-serialization failure, unexpected errors, and returned-but-rejected classes such as declared domain termination or constraint violation. None of these labels alone proves a spacetime singularity.
 
 ## Output contract
 
@@ -136,73 +96,16 @@ trajectories/
   scpc-<run-id>-<content-hash>.nc       # selected valid outcomes only
 ```
 
-`scan_index.csv` contains one row per attempted experiment, including:
+The CSV records run hashes, coordinates, normalized specification, status, outcome or failure, event diagnostics, constraint residual, return summaries, completion state, primary termination fields, canonical JSON for the full coincident boundary set, solver metadata, and retained trajectory path. The summary counts every boundary kind, including coincident surfaces.
 
-- short and full run hashes;
-- status and outcome or failure class;
-- first-class scan coordinates;
-- the complete normalized experiment specification;
-- event counts and event sequence;
-- maximum constraint residual;
-- return-sequence summaries;
-- completion and domain-termination fields;
-- solver metadata;
-- retained trajectory path, when applicable.
+NetCDF termination products contain the shared exact terminal state and a `termination_boundary` dimension with kind codes, thresholds, observed values, and per-boundary units. JSON attributes preserve the full named representation.
 
-Nested fields are canonical JSON strings so the CSV remains interoperable without discarding structure. `scan_summary.json` includes counts by status, outcome, failure class, and termination kind.
+## Resume and transactions
 
-## Resume integrity
+Resume metadata binds outputs to scan/schema/base hashes, planned run hashes, SCPC source hash, Python, numerical dependency versions, platform, and architecture. Existing rows, complete specifications, statuses, hashes, and retained files are validated before any skip.
 
-Resume metadata records:
-
-- scan-schema version and hash;
-- scan-protocol hash;
-- base-configuration hash;
-- ordered full hashes of every planned run;
-- an SCPC source-tree hash;
-- Python implementation and version;
-- numerical dependency versions;
-- operating-system platform and machine architecture.
-
-On resume, the runner verifies every indexed run ID, full hash, coordinate mapping, complete specification, status, and retained trajectory file before skipping any point. A copied output directory can move to another filesystem location, but it cannot be resumed under a changed implementation or declared numerical runtime. Such changes require a new output directory.
-
-## Transactional reruns and recovery
-
-A rerun does not delete the previous durable result before replacement. The sequence is:
-
-1. retain the existing index row and retained trajectory;
-2. compute the replacement attempt;
-3. write a candidate trajectory under a content-addressed filename;
-4. atomically replace the index row;
-5. only then remove an obsolete previously referenced trajectory;
-6. atomically refresh the summary and final provenance products.
-
-If execution stops before the row replacement, the previous row and trajectory remain valid. On the next resume, pending and unreferenced scan-owned transaction files are removed after the existing index has been validated.
-
-## Trajectory retention
-
-The index always stores every result, but full trajectories are retained only when:
-
-- the completed solution reaches the requested endpoint;
-- it passes numerical-validity checks;
-- its outcome is listed in the protocol retention policy;
-- the hard trajectory-count limit has not been reached.
-
-Domain-terminated runs remain represented by exact scalar termination fields in the index. They are not retained as full candidate trajectories by the current policy because they did not complete the declared interval.
-
-## Outcome maps
-
-A configured map represents exactly two numeric scan axes and is preflight-validated before execution. Coordinate pairs must be unique, both axes must contain at least two distinct values, and the plan must be a complete Cartesian grid. Cell boundaries are derived from the actual parameter values, so nonuniform parameter spacing is not visually converted into uniform spacing. Failed and rejected runs remain visible as separate categorical labels.
+Reruns retain the old durable row and trajectory until a replacement trajectory is content-addressed and the new row is atomically committed. Only then is an obsolete prior trajectory removed. Startup recovery removes only unreferenced scan-owned transaction files.
 
 ## Scientific boundary
 
-This scan layer classifies numerical experiments. It does not establish:
-
-- geodesic completeness or a spacetime singularity theorem;
-- recurrence across solver methods and tolerances;
-- a stable periodic orbit;
-- perturbative viability;
-- a cosmological observable;
-- an empirical fit.
-
-Those conclusions remain gated by the later stages in `docs/research_roadmap.md`.
+This layer classifies numerical experiments. It does not establish geodesic completeness, a singularity theorem, recurrence across numerical methods, a stable periodic orbit, perturbative viability, an observable, or an empirical fit. Those claims remain gated by `docs/research_roadmap.md` and issues #3–#8.

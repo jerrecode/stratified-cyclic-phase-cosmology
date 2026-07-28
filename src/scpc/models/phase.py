@@ -14,28 +14,26 @@ from typing import Any, Callable, Literal
 import numpy as np
 import xarray as xr
 from scipy.integrate import solve_ivp
+from scipy.optimize import brentq
 
 
 DOMAIN_TERMINATION_KINDS = (
-    "minimum_scale_factor",
-    "maximum_scale_factor",
-    "maximum_total_density",
-    "maximum_absolute_hubble",
-    "maximum_absolute_ricci_scalar",
     "maximum_absolute_field",
     "maximum_absolute_field_velocity",
+    "maximum_absolute_hubble",
+    "maximum_absolute_ricci_scalar",
+    "maximum_scale_factor",
+    "maximum_total_density",
+    "minimum_scale_factor",
 )
+DOMAIN_TERMINATION_KIND_CODES = {
+    kind: index for index, kind in enumerate(DOMAIN_TERMINATION_KINDS, start=1)
+}
 
 
 @dataclass(frozen=True)
 class PeriodicPotential:
-    """Periodic scalar potential with an explicitly declared target-space topology.
-
-    A periodic potential on the real line does not identify field values that
-    differ by a potential period. When ``target_space`` is ``"circle"``, only
-    shifts by the full target circumference ``2*pi*field_scale`` identify the
-    same point; adjacent potential minima remain distinct strata.
-    """
+    """Periodic scalar potential with an explicitly declared target-space topology."""
 
     offset: float = 3.0
     amplitude: float = 0.1
@@ -53,14 +51,10 @@ class PeriodicPotential:
 
     @property
     def potential_period(self) -> float:
-        """Field displacement between adjacent equivalent potential cells."""
-
         return float(2.0 * np.pi * self.field_scale / self.strata_count)
 
     @property
     def target_circumference(self) -> float | None:
-        """Full compact target circumference, or ``None`` for a real scalar."""
-
         if self.target_space == "circle":
             return float(2.0 * np.pi * self.field_scale)
         return None
@@ -97,10 +91,11 @@ class SCPCParameters:
 
 @dataclass(frozen=True)
 class SCPCIntegrationDomain:
-    """Declared numerical/physical domain boundaries for one background run.
+    """Declared physical-analysis boundaries for one background run.
 
-    Reaching one of these limits terminates the integration at a root-localized
-    event. A limit is a declared analysis boundary, not a singularity claim.
+    Event detection is backed by a finite solver ``max_step`` and dense
+    substep checks. These limits are analysis boundaries, not singularity
+    claims.
     """
 
     min_scale_factor: float | None = None
@@ -121,6 +116,10 @@ class SCPCIntegrationDomain:
             and self.min_scale_factor >= self.max_scale_factor
         ):
             raise ValueError("min_scale_factor must be smaller than max_scale_factor")
+
+    @property
+    def configured(self) -> bool:
+        return any(value is not None for value in asdict(self).values())
 
     def validate_for(self, parameters: SCPCParameters) -> None:
         if self.max_abs_field is not None and parameters.potential.target_space == "circle":
@@ -153,6 +152,7 @@ class SCPCSolution:
     termination_threshold: float | None = None
     termination_observed: float | None = None
     termination_units: str | None = None
+    termination_boundaries: tuple[dict[str, Any], ...] = ()
     requested_end_time: float | None = None
 
     @property
@@ -179,7 +179,7 @@ class SCPCSolution:
                 self.termination_observed,
                 self.termination_units,
             )
-            if any(value is not None for value in fields):
+            if any(value is not None for value in fields) or self.termination_boundaries:
                 raise ValueError("Nonterminated solution contains partial termination metadata")
             return None
         if self.termination_kind not in DOMAIN_TERMINATION_KINDS:
@@ -190,11 +190,23 @@ class SCPCSolution:
             or self.termination_threshold is None
             or self.termination_observed is None
             or not self.termination_units
+            or not self.termination_boundaries
         ):
             raise ValueError("Terminated solutions require complete termination metadata")
         state = np.asarray(self.termination_state_vector, dtype=float)
         if state.shape != (4,) or np.any(~np.isfinite(state)):
             raise ValueError("termination_state_vector must be a finite array with shape (4,)")
+        kinds = tuple(str(boundary["kind"]) for boundary in self.termination_boundaries)
+        if kinds != tuple(sorted(set(kinds))):
+            raise ValueError("termination_boundaries must be unique and lexically ordered")
+        primary = self.termination_boundaries[0]
+        if (
+            primary["kind"] != self.termination_kind
+            or float(primary["threshold"]) != float(self.termination_threshold)
+            or float(primary["observed"]) != float(self.termination_observed)
+            or primary["units"] != self.termination_units
+        ):
+            raise ValueError("Primary termination fields must match the first boundary record")
         return state
 
     def to_xarray(self) -> xr.Dataset:
@@ -216,6 +228,11 @@ class SCPCSolution:
                     "termination_threshold": float(self.termination_threshold),
                     "termination_observed": float(self.termination_observed),
                     "termination_units": str(self.termination_units),
+                    "termination_boundaries": json.dumps(
+                        list(self.termination_boundaries),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 }
             )
 
@@ -229,7 +246,11 @@ class SCPCSolution:
                 "radiation_density": ("time", self.rho_r, {"units": "M_pl^4"}),
                 "field_density": ("time", self.rho_phi, {"units": "M_pl^4"}),
                 "field_pressure": ("time", self.p_phi, {"units": "M_pl^4"}),
-                "friedmann_constraint_residual": ("time", self.constraint_residual, {"units": "1"}),
+                "friedmann_constraint_residual": (
+                    "time",
+                    self.constraint_residual,
+                    {"units": "1"},
+                ),
             },
             coords={"time": ("time", self.t, {"units": "M_pl^-1"})},
             attrs=attrs,
@@ -243,14 +264,33 @@ class SCPCSolution:
                 raise ValueError("Turning times, kinds, and state vectors must have equal lengths")
             if states.shape[0] > 0:
                 kind_codes = np.asarray(
-                    [1 if kind == "bounce" else -1 if kind == "turnaround" else 0 for kind in self.turning_kinds],
+                    [
+                        1 if kind == "bounce" else -1 if kind == "turnaround" else 0
+                        for kind in self.turning_kinds
+                    ],
                     dtype=np.int8,
                 )
                 dataset = dataset.assign_coords(turning_event=np.arange(states.shape[0], dtype=int))
-                dataset["turning_time"] = ("turning_event", self.turning_times, {"units": "M_pl^-1"})
-                dataset["turning_scale_factor"] = ("turning_event", states[:, 0], {"units": "1"})
-                dataset["turning_hubble"] = ("turning_event", states[:, 1], {"units": "M_pl"})
-                dataset["turning_field"] = ("turning_event", states[:, 2], {"units": "M_pl"})
+                dataset["turning_time"] = (
+                    "turning_event",
+                    self.turning_times,
+                    {"units": "M_pl^-1"},
+                )
+                dataset["turning_scale_factor"] = (
+                    "turning_event",
+                    states[:, 0],
+                    {"units": "1"},
+                )
+                dataset["turning_hubble"] = (
+                    "turning_event",
+                    states[:, 1],
+                    {"units": "M_pl"},
+                )
+                dataset["turning_field"] = (
+                    "turning_event",
+                    states[:, 2],
+                    {"units": "M_pl"},
+                )
                 dataset["turning_field_velocity"] = (
                     "turning_event",
                     states[:, 3],
@@ -282,6 +322,32 @@ class SCPCSolution:
             dataset["termination_field_velocity"] = xr.DataArray(
                 termination_state[3],
                 attrs={"units": "M_pl^2"},
+            )
+            boundaries = self.termination_boundaries
+            dataset = dataset.assign_coords(
+                termination_boundary=np.arange(len(boundaries), dtype=int)
+            )
+            dataset["termination_boundary_kind_code"] = (
+                "termination_boundary",
+                np.asarray(
+                    [DOMAIN_TERMINATION_KIND_CODES[str(item["kind"])] for item in boundaries],
+                    dtype=np.int16,
+                ),
+                {"codes": json.dumps(DOMAIN_TERMINATION_KIND_CODES, sort_keys=True)},
+            )
+            dataset["termination_boundary_threshold"] = (
+                "termination_boundary",
+                np.asarray([float(item["threshold"]) for item in boundaries]),
+            )
+            dataset["termination_boundary_observed"] = (
+                "termination_boundary",
+                np.asarray([float(item["observed"]) for item in boundaries]),
+            )
+            dataset["termination_boundary_threshold"].attrs["units_by_boundary"] = json.dumps(
+                [str(item["units"]) for item in boundaries]
+            )
+            dataset["termination_boundary_observed"].attrs["units_by_boundary"] = json.dumps(
+                [str(item["units"]) for item in boundaries]
             )
         return dataset
 
@@ -341,6 +407,28 @@ def _ricci_scalar(state: np.ndarray, parameters: SCPCParameters) -> float:
     a, H, _phi, _v = state
     hdot = float(_rhs(0.0, state, parameters)[1])
     return float(6.0 * (hdot + 2.0 * H**2 + parameters.spatial_curvature_k / a**2))
+
+
+def evaluate_domain_boundary(
+    kind: str,
+    state: np.ndarray,
+    parameters: SCPCParameters,
+) -> tuple[float, str]:
+    """Recompute one declared boundary observable from a state vector."""
+
+    if kind == "minimum_scale_factor" or kind == "maximum_scale_factor":
+        return float(state[0]), "1"
+    if kind == "maximum_total_density":
+        return _total_density(state, parameters), "M_pl^4"
+    if kind == "maximum_absolute_hubble":
+        return abs(float(state[1])), "M_pl"
+    if kind == "maximum_absolute_ricci_scalar":
+        return abs(_ricci_scalar(state, parameters)), "M_pl^2"
+    if kind == "maximum_absolute_field":
+        return abs(float(state[2])), "M_pl"
+    if kind == "maximum_absolute_field_velocity":
+        return abs(float(state[3])), "M_pl^2"
+    raise ValueError(f"Unknown domain boundary kind: {kind}")
 
 
 @dataclass(frozen=True)
@@ -426,7 +514,7 @@ def _domain_event_definitions(
         lambda state: abs(float(state[3])),
         lambda state: float(domain.max_abs_field_velocity - abs(state[3])),
     )
-    return tuple(definitions)
+    return tuple(sorted(definitions, key=lambda definition: definition.kind))
 
 
 def _make_terminal_event(definition: _DomainEventDefinition):
@@ -438,24 +526,97 @@ def _make_terminal_event(definition: _DomainEventDefinition):
     return event
 
 
-def _append_exact_endpoint(
-    times: np.ndarray,
-    states: np.ndarray,
-    event_time: float,
-    event_state: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    scale = max(1.0, abs(event_time))
+def _event_tolerance(rtol: float, atol: float, scale: float) -> float:
+    return max(100.0 * atol, 1.0e-12) + max(100.0 * rtol, 1.0e-9) * max(1.0, scale)
+
+
+def _first_dense_domain_exit(
+    internal_times: np.ndarray,
+    dense_solution: Callable[[np.ndarray | float], np.ndarray],
+    definitions: tuple[_DomainEventDefinition, ...],
+    *,
+    substeps: int,
+) -> tuple[float, str, np.ndarray] | None:
+    """Find the first sampled dense-output exit within accepted solver steps.
+
+    A finite solver max step and explicit substeps bound the unresolved time
+    scale. Convergence in both controls is required for production scans.
+    """
+
+    earliest: tuple[float, str, np.ndarray] | None = None
+    for left, right in zip(internal_times[:-1], internal_times[1:], strict=True):
+        sample_times = np.linspace(float(left), float(right), substeps + 1)
+        states = np.asarray(dense_solution(sample_times), dtype=float)
+        for definition in definitions:
+            residuals = np.asarray(
+                [definition.residual(states[:, index]) for index in range(states.shape[1])]
+            )
+            for index in range(substeps):
+                left_value = float(residuals[index])
+                right_value = float(residuals[index + 1])
+                if left_value <= 0.0:
+                    candidate_time = float(sample_times[index])
+                    candidate_state = states[:, index]
+                elif right_value <= 0.0:
+                    left_time = float(sample_times[index])
+                    right_time = float(sample_times[index + 1])
+                    candidate_time = float(
+                        brentq(
+                            lambda time: definition.residual(
+                                np.asarray(dense_solution(time), dtype=float)
+                            ),
+                            left_time,
+                            right_time,
+                        )
+                    )
+                    candidate_state = np.asarray(dense_solution(candidate_time), dtype=float)
+                else:
+                    continue
+                candidate = (candidate_time, definition.kind, candidate_state)
+                if earliest is None or candidate_time < earliest[0]:
+                    earliest = candidate
+                break
+        if earliest is not None and earliest[0] <= right:
+            break
+    return earliest
+
+
+def _coincident_boundary_records(
+    state: np.ndarray,
+    definitions: tuple[_DomainEventDefinition, ...],
+    *,
+    forced_kind: str,
+    rtol: float,
+    atol: float,
+) -> tuple[dict[str, Any], ...]:
+    records: list[dict[str, Any]] = []
+    for definition in definitions:
+        observed = float(definition.observed(state))
+        tolerance = _event_tolerance(rtol, atol, max(abs(observed), definition.threshold))
+        if definition.kind == forced_kind or abs(observed - definition.threshold) <= tolerance:
+            records.append(
+                {
+                    "kind": definition.kind,
+                    "threshold": definition.threshold,
+                    "observed": observed,
+                    "units": definition.units,
+                }
+            )
+    return tuple(sorted(records, key=lambda record: str(record["kind"])))
+
+
+def _evaluation_grid(
+    t_span: tuple[float, float],
+    samples: int,
+    end_time: float,
+) -> np.ndarray:
+    requested = np.linspace(t_span[0], t_span[1], samples)
+    scale = max(1.0, abs(end_time))
     tolerance = 64.0 * np.finfo(float).eps * scale
-    if times.size and np.isclose(times[-1], event_time, rtol=0.0, atol=tolerance):
-        exact_times = times.copy()
-        exact_states = states.copy()
-        exact_times[-1] = event_time
-        exact_states[:, -1] = event_state
-        return exact_times, exact_states
-    return (
-        np.concatenate((times, np.asarray([event_time]))),
-        np.concatenate((states, np.asarray(event_state, dtype=float)[:, None]), axis=1),
-    )
+    if np.isclose(end_time, t_span[1], rtol=0.0, atol=tolerance):
+        return requested
+    before = requested[requested < end_time - tolerance]
+    return np.concatenate((before, np.asarray([end_time])))
 
 
 def integrate_scpc(
@@ -471,12 +632,31 @@ def integrate_scpc(
     atol: float = 1e-11,
     method: str = "DOP853",
     domain: SCPCIntegrationDomain | None = None,
+    max_step: float | None = None,
+    domain_check_substeps: int = 16,
 ) -> SCPCSolution:
-    """Integrate the homogeneous baseline with turning and domain events."""
+    """Integrate the homogeneous baseline with turning and checked domain events."""
+
+    if samples < 2:
+        raise ValueError("samples must be at least 2")
+    if domain_check_substeps < 2 or isinstance(domain_check_substeps, bool):
+        raise ValueError("domain_check_substeps must be an integer of at least 2")
+    definitions = _domain_event_definitions(domain, parameters) if domain is not None else ()
+    if definitions:
+        if max_step is None or not np.isfinite(max_step) or max_step <= 0.0:
+            raise ValueError(
+                "A finite positive max_step is required when integration-domain boundaries are configured"
+            )
+        solver_max_step = float(max_step)
+    else:
+        solver_max_step = float(max_step) if max_step is not None else np.inf
+        if not np.isfinite(solver_max_step) and max_step is not None:
+            raise ValueError("max_step must be finite and positive when configured")
+        if solver_max_step <= 0.0:
+            raise ValueError("max_step must be finite and positive when configured")
 
     H0 = initial_hubble(a0, phi0, phi_dot0, parameters, branch)
     initial_state = np.asarray([a0, H0, phi0, phi_dot0], dtype=float)
-    t_eval = np.linspace(t_span[0], t_span[1], samples)
 
     def turning_event(_t: float, state: np.ndarray) -> float:
         return float(state[1])
@@ -484,7 +664,6 @@ def integrate_scpc(
     turning_event.terminal = False  # type: ignore[attr-defined]
     turning_event.direction = 0  # type: ignore[attr-defined]
 
-    definitions = _domain_event_definitions(domain, parameters) if domain is not None else ()
     for definition in definitions:
         initial_residual = definition.residual(initial_state)
         if not np.isfinite(initial_residual) or initial_residual <= 0.0:
@@ -498,15 +677,41 @@ def integrate_scpc(
         lambda t, y: _rhs(t, y, parameters),
         t_span,
         initial_state,
-        t_eval=t_eval,
         method=method,
         rtol=rtol,
         atol=atol,
         events=events,
         dense_output=True,
+        max_step=solver_max_step,
     )
     if not sol.success:
         raise RuntimeError(f"Background integration failed: {sol.message}")
+    if sol.sol is None:
+        raise RuntimeError("Background integration did not return dense output")
+
+    reported_candidates: list[tuple[float, str, np.ndarray]] = []
+    for event_index, definition in enumerate(definitions, start=1):
+        if len(sol.t_events[event_index]):
+            reported_candidates.append(
+                (
+                    float(sol.t_events[event_index][0]),
+                    definition.kind,
+                    np.asarray(sol.y_events[event_index][0], dtype=float),
+                )
+            )
+    reported = min(reported_candidates, key=lambda candidate: (candidate[0], candidate[1])) if reported_candidates else None
+    dense_exit = (
+        _first_dense_domain_exit(
+            np.asarray(sol.t, dtype=float),
+            sol.sol,
+            definitions,
+            substeps=domain_check_substeps,
+        )
+        if definitions
+        else None
+    )
+    candidates = [candidate for candidate in (reported, dense_exit) if candidate is not None]
+    termination = min(candidates, key=lambda candidate: (candidate[0], candidate[1])) if candidates else None
 
     termination_kind: str | None = None
     termination_time: float | None = None
@@ -514,27 +719,28 @@ def integrate_scpc(
     termination_threshold: float | None = None
     termination_observed: float | None = None
     termination_units: str | None = None
-    terminated_events: list[tuple[float, int, np.ndarray]] = []
-    for event_index, definition in enumerate(definitions, start=1):
-        event_times = sol.t_events[event_index]
-        event_states = sol.y_events[event_index]
-        if len(event_times):
-            terminated_events.append((float(event_times[0]), event_index - 1, np.asarray(event_states[0])))
-    if terminated_events:
-        termination_time, definition_index, termination_state = min(
-            terminated_events,
-            key=lambda item: item[0],
+    termination_boundaries: tuple[dict[str, Any], ...] = ()
+    if termination is not None:
+        termination_time, forced_kind, termination_state = termination
+        termination_state = np.asarray(sol.sol(termination_time), dtype=float)
+        termination_boundaries = _coincident_boundary_records(
+            termination_state,
+            definitions,
+            forced_kind=forced_kind,
+            rtol=rtol,
+            atol=atol,
         )
-        definition = definitions[definition_index]
-        termination_kind = definition.kind
-        termination_threshold = definition.threshold
-        termination_observed = definition.observed(termination_state)
-        termination_units = definition.units
+        primary = termination_boundaries[0]
+        termination_kind = str(primary["kind"])
+        termination_threshold = float(primary["threshold"])
+        termination_observed = float(primary["observed"])
+        termination_units = str(primary["units"])
 
-    times = np.asarray(sol.t, dtype=float)
-    states = np.asarray(sol.y, dtype=float)
-    if termination_time is not None and termination_state is not None:
-        times, states = _append_exact_endpoint(times, states, termination_time, termination_state)
+    effective_end = termination_time if termination_time is not None else float(t_span[1])
+    times = _evaluation_grid(t_span, samples, effective_end)
+    states = np.asarray(sol.sol(times), dtype=float)
+    if termination_state is not None:
+        states[:, -1] = termination_state
 
     a, H, phi, v = states
     rho_m, rho_r, rho_phi, p_phi = _components(a, phi, v, parameters)
@@ -543,13 +749,17 @@ def integrate_scpc(
     scale = np.maximum(np.abs(rhs), 1e-15)
     residual = (lhs - rhs) / scale
 
-    event_times = np.asarray(sol.t_events[0] if sol.t_events else [], dtype=float)
+    all_turning_times = np.asarray(sol.t_events[0] if sol.t_events else [], dtype=float)
     if sol.y_events and len(sol.y_events[0]) > 0:
-        event_states = np.asarray(sol.y_events[0], dtype=float)
+        all_turning_states = np.asarray(sol.y_events[0], dtype=float)
     else:
-        event_states = np.empty((0, 4), dtype=float)
-    if event_states.shape != (event_times.size, 4):
+        all_turning_states = np.empty((0, 4), dtype=float)
+    if all_turning_states.shape != (all_turning_times.size, 4):
         raise RuntimeError("Solver returned inconsistent turning-event state data")
+    event_tolerance = _event_tolerance(rtol, atol, max(1.0, abs(effective_end)))
+    keep = all_turning_times <= effective_end + event_tolerance
+    event_times = all_turning_times[keep]
+    event_states = all_turning_states[keep]
 
     kinds: list[str] = []
     for event_time, state in zip(event_times, event_states, strict=True):
@@ -576,6 +786,8 @@ def integrate_scpc(
             "solver_atol": atol,
             "solver_nfev": int(sol.nfev),
             "solver_status": int(sol.status),
+            "solver_max_step": solver_max_step if np.isfinite(solver_max_step) else "unbounded",
+            "domain_check_substeps": int(domain_check_substeps),
             "requested_end_time": float(t_span[1]),
             "reached_end_time": float(times[-1]),
             "integration_domain": json.dumps(
@@ -591,5 +803,6 @@ def integrate_scpc(
         termination_threshold=termination_threshold,
         termination_observed=termination_observed,
         termination_units=termination_units,
+        termination_boundaries=termination_boundaries,
         requested_end_time=float(t_span[1]),
     )

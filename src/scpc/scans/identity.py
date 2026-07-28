@@ -42,6 +42,8 @@ _EXECUTION_TYPES: dict[str, type] = {
     "run.method": str,
     "run.rtol": float,
     "run.atol": float,
+    "run.max_step": float,
+    "run.domain_check_substeps": int,
     "run.domain.min_scale_factor": float,
     "run.domain.max_scale_factor": float,
     "run.domain.max_total_density": float,
@@ -107,13 +109,7 @@ def _execution_cast(path: str, value: Any, expected: type) -> Any:
 
 
 def normalize_background_specification(specification: dict[str, Any]) -> dict[str, Any]:
-    """Return the values exactly as the background executor will interpret them.
-
-    Known numerical and string fields are normalized before run hashing. This
-    prevents representations such as ``101`` and ``101.0`` from scheduling two
-    experiments that execute identically. Unknown extension fields are retained
-    unchanged and remain part of the identity.
-    """
+    """Return the values exactly as the background executor will interpret them."""
 
     normalized = copy.deepcopy(specification)
     for path, expected in _EXECUTION_TYPES.items():

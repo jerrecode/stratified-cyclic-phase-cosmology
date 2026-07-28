@@ -1,9 +1,4 @@
-"""Transactional deterministic background-scan execution.
-
-This package preserves the previous durable result during reruns, binds resume
-to the exact SCPC source and numerical runtime, and treats domain termination
-and orphan cleanup as analysis records rather than proof of a physical outcome.
-"""
+"""Transactional deterministic background-scan execution."""
 
 from __future__ import annotations
 
@@ -73,6 +68,12 @@ def _integrate_point(point: ScanPoint):
         raise TypeError("run.domain must be a mapping when configured")
     else:
         domain = SCPCIntegrationDomain(**domain_config)
+        if domain.configured and "max_step" not in run:
+            raise ValueError("run.max_step is required when run.domain configures boundaries")
+        if domain.configured and "domain_check_substeps" not in run:
+            raise ValueError(
+                "run.domain_check_substeps is required when run.domain configures boundaries"
+            )
     return integrate_scpc(
         parameters,
         t_span=(float(run["t_start"]), float(run["t_end"])),
@@ -85,7 +86,28 @@ def _integrate_point(point: ScanPoint):
         phi_dot0=float(initial["phi_dot"]),
         branch=int(initial["branch"]),
         domain=domain,
+        max_step=float(run["max_step"]) if "max_step" in run else None,
+        domain_check_substeps=int(run.get("domain_check_substeps", 16)),
     )
+
+
+def _termination_kind_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for row in rows:
+        raw = row.get("termination_boundaries")
+        if not raw:
+            continue
+        try:
+            boundaries = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise ValueError("Scan index contains invalid termination_boundaries JSON") from error
+        if not isinstance(boundaries, list):
+            raise ValueError("Scan termination_boundaries must decode to a list")
+        for boundary in boundaries:
+            if not isinstance(boundary, dict) or not boundary.get("kind"):
+                raise ValueError("Scan termination boundary record is malformed")
+            counts[str(boundary["kind"])] += 1
+    return dict(sorted(counts.items()))
 
 
 def _summary(rows: list[dict[str, Any]], planned_runs: int) -> dict[str, Any]:
@@ -105,15 +127,7 @@ def _summary(rows: list[dict[str, Any]], planned_runs: int) -> dict[str, Any]:
                 ).items()
             )
         ),
-        "termination_kind_counts": dict(
-            sorted(
-                Counter(
-                    row["termination_kind"]
-                    for row in rows
-                    if row.get("termination_kind")
-                ).items()
-            )
-        ),
+        "termination_kind_counts": _termination_kind_counts(rows),
         "trajectory_count": sum(bool(row.get("trajectory_path")) for row in rows),
     }
 

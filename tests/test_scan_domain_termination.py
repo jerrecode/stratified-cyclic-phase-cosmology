@@ -48,6 +48,8 @@ def _base_specification(*, threshold: float | int = 0.8) -> dict:
             "method": "DOP853",
             "rtol": 1.0e-10,
             "atol": 1.0e-12,
+            "max_step": 0.025,
+            "domain_check_substeps": 16,
             "domain": {"min_scale_factor": threshold},
         },
     }
@@ -89,10 +91,14 @@ def _single_row(index_path: Path) -> dict[str, str]:
     return rows[0]
 
 
-def test_domain_values_are_execution_normalized_in_run_identity() -> None:
-    integer = canonical_run_identity(_base_specification(threshold=1))
-    floating = canonical_run_identity(_base_specification(threshold=1.0))
-    assert integer == floating
+def test_domain_and_check_controls_are_execution_normalized_in_run_identity() -> None:
+    integer = _base_specification(threshold=1)
+    integer["run"]["max_step"] = 1
+    integer["run"]["domain_check_substeps"] = 16.0
+    floating = _base_specification(threshold=1.0)
+    floating["run"]["max_step"] = 1.0
+    floating["run"]["domain_check_substeps"] = 16
+    assert canonical_run_identity(integer) == canonical_run_identity(floating)
 
 
 def test_empty_domain_mapping_is_identity_equivalent_to_omission() -> None:
@@ -114,9 +120,7 @@ def test_execution_equivalent_domain_axis_values_are_duplicate_runs() -> None:
 def test_domain_termination_is_rejected_outcome_not_failed_run(tmp_path) -> None:
     scan_path = _write_scan(tmp_path)
     output = tmp_path / "output"
-    row = _single_row(
-        run_background_scan(scan_path, output, schema_path=SCAN_SCHEMA)
-    )
+    row = _single_row(run_background_scan(scan_path, output, schema_path=SCAN_SCHEMA))
 
     assert row["status"] == "rejected"
     assert row["outcome"] == "physical_domain_termination"
@@ -128,11 +132,22 @@ def test_domain_termination_is_rejected_outcome_not_failed_run(tmp_path) -> None
     assert float(row["termination_threshold"]) == pytest.approx(0.8)
     assert float(row["termination_observed"]) == pytest.approx(0.8)
     assert row["termination_units"] == "1"
+    boundaries = json.loads(row["termination_boundaries"])
+    assert boundaries == [
+        {
+            "kind": "minimum_scale_factor",
+            "observed": pytest.approx(0.8, rel=1.0e-8),
+            "threshold": 0.8,
+            "units": "1",
+        }
+    ]
     assert "not a spacetime singularity claim" in row["reason"]
     assert row["trajectory_path"] == ""
 
     specification = json.loads(row["specification"])
     assert specification["run"]["domain"] == {"min_scale_factor": 0.8}
+    assert specification["run"]["max_step"] == 0.025
+    assert specification["run"]["domain_check_substeps"] == 16
     summary = json.loads((output / "scan_summary.json").read_text(encoding="utf-8"))
     assert summary["status_counts"] == {"rejected": 1}
     assert summary["outcome_counts"] == {"physical_domain_termination": 1}
@@ -156,6 +171,8 @@ def test_terminated_solution_is_not_full_interval_morphology() -> None:
         phi_dot0=0.0,
         branch=-1,
         domain=SCPCIntegrationDomain(min_scale_factor=0.8),
+        max_step=0.025,
+        domain_check_substeps=16,
     )
     assessment = assess_solution(solution)
     assert assessment.outcome is OutcomeClass.PHYSICAL_DOMAIN_TERMINATION
@@ -178,6 +195,8 @@ def test_inconsistent_termination_endpoint_is_result_integrity_error() -> None:
         phi_dot0=0.0,
         branch=-1,
         domain=SCPCIntegrationDomain(min_scale_factor=0.8),
+        max_step=0.025,
+        domain_check_substeps=16,
     )
     solution.termination_time = float(solution.termination_time) + 0.1
     with pytest.raises(ResultIntegrityError, match="final stored time"):
