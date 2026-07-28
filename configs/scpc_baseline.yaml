@@ -11,6 +11,7 @@ model:
     amplitude: 0.08
     strata_count: 4
     field_scale: 1.0
+    target_space: real
 initial_conditions:
   a: 1.0
   phi: 0.15
