@@ -51,6 +51,12 @@ class RunRecord:
     event_sequence: tuple[str, ...] = ()
     max_abs_constraint_residual: float | None = None
     return_sequence_classifications: dict[str, str] | None = None
+    completed_to_requested_end: bool | None = None
+    termination_kind: str | None = None
+    termination_time: float | None = None
+    termination_threshold: float | None = None
+    termination_observed: float | None = None
+    termination_units: str | None = None
     solver_metadata: dict[str, Any] | None = None
     trajectory_path: str | None = None
 
@@ -106,6 +112,22 @@ def completed_run_record(
         event_sequence=assessment.event_sequence,
         max_abs_constraint_residual=assessment.max_abs_constraint_residual,
         return_sequence_classifications=assessment.return_sequence_classifications,
+        completed_to_requested_end=solution.completed_to_requested_end,
+        termination_kind=solution.termination_kind,
+        termination_time=(
+            float(solution.termination_time) if solution.termination_time is not None else None
+        ),
+        termination_threshold=(
+            float(solution.termination_threshold)
+            if solution.termination_threshold is not None
+            else None
+        ),
+        termination_observed=(
+            float(solution.termination_observed)
+            if solution.termination_observed is not None
+            else None
+        ),
+        termination_units=solution.termination_units,
         solver_metadata=dict(solution.solver_metadata),
         trajectory_path=str(trajectory_path) if trajectory_path is not None else None,
     )
@@ -151,4 +173,5 @@ def failed_run_record(
         failure_class=failure_class,
         exception_type=type(error).__name__,
         exception_message=str(error),
+        completed_to_requested_end=False,
     )

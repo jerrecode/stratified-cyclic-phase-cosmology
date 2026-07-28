@@ -1,9 +1,9 @@
 """Conservative outcome classification for homogeneous background trajectories.
 
-The classifier separates numerical invalidity, unresolved event detection, and
-physical trajectory morphology. It does not infer a spacetime singularity from
-a solver exception and does not label repeated turning points as a cyclic
-cosmology.
+The classifier separates numerical invalidity, declared domain termination,
+unresolved event detection, and physical trajectory morphology. It does not
+infer a spacetime singularity from a solver exception or domain boundary and
+does not label repeated turning points as a cyclic cosmology.
 """
 
 from __future__ import annotations
@@ -13,19 +13,20 @@ from enum import StrEnum
 
 import numpy as np
 
-from scpc.models.phase import SCPCSolution
+from scpc.models.phase import DOMAIN_TERMINATION_KINDS, SCPCSolution
 from scpc.numerics.cycles import classify_return_sequences, cycle_return_metrics
 from scpc.scans.errors import ResultIntegrityError
 
 
 class OutcomeClass(StrEnum):
-    """Mutually exclusive high-level classes for completed integrations."""
+    """Mutually exclusive high-level classes for returned integrations."""
 
     NONFINITE_STATE = "nonfinite_state"
     NONPOSITIVE_SCALE_FACTOR = "nonpositive_scale_factor"
     CONSTRAINT_VIOLATION = "constraint_violation"
     DEGENERATE_TURNING_EVENT = "degenerate_turning_event"
     UNRESOLVED_EVENT_DETECTION = "unresolved_event_detection"
+    PHYSICAL_DOMAIN_TERMINATION = "physical_domain_termination"
     MONOTONIC_EXPANSION = "monotonic_expansion"
     MONOTONIC_CONTRACTION = "monotonic_contraction"
     QUASI_STATIC_OR_AMBIGUOUS = "quasi_static_or_ambiguous"
@@ -147,6 +148,71 @@ def _unmatched_sampled_crossings(
     return tuple(unmatched)
 
 
+def _validate_termination_metadata(
+    solution: SCPCSolution,
+    arrays: tuple[np.ndarray, ...],
+) -> None:
+    kind = solution.termination_kind
+    metadata = (
+        solution.termination_time,
+        solution.termination_state_vector,
+        solution.termination_threshold,
+        solution.termination_observed,
+        solution.termination_units,
+    )
+    if kind is None:
+        if any(value is not None for value in metadata):
+            raise ResultIntegrityError(
+                "Nonterminated solution contains partial termination metadata"
+            )
+        if not solution.completed_to_requested_end:
+            raise ResultIntegrityError(
+                "Integration ended before its requested endpoint without a declared termination"
+            )
+        return
+
+    if kind not in DOMAIN_TERMINATION_KINDS:
+        raise ResultIntegrityError(f"Unknown physical-domain termination kind: {kind}")
+    if (
+        solution.termination_time is None
+        or solution.termination_state_vector is None
+        or solution.termination_threshold is None
+        or solution.termination_observed is None
+        or not solution.termination_units
+        or solution.requested_end_time is None
+    ):
+        raise ResultIntegrityError(
+            "Physical-domain termination requires complete time, state, threshold, units, "
+            "observed value, and requested-end metadata"
+        )
+
+    termination_time = float(solution.termination_time)
+    threshold = float(solution.termination_threshold)
+    observed = float(solution.termination_observed)
+    state = np.asarray(solution.termination_state_vector, dtype=float)
+    if not np.isfinite(termination_time):
+        raise ResultIntegrityError("Termination time must be finite")
+    if state.shape != (4,) or np.any(~np.isfinite(state)):
+        raise ResultIntegrityError("Termination state must be a finite vector with shape (4,)")
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ResultIntegrityError("Termination threshold must be finite and positive")
+    if not np.isfinite(observed) or observed <= 0.0:
+        raise ResultIntegrityError("Termination observed value must be finite and positive")
+
+    time = arrays[0]
+    scale = max(1.0, abs(termination_time), abs(float(time[-1])))
+    time_tolerance = 128.0 * np.finfo(float).eps * scale
+    if not np.isclose(time[-1], termination_time, rtol=0.0, atol=time_tolerance):
+        raise ResultIntegrityError("Exact termination time must be the final stored time")
+    final_state = np.asarray([arrays[1][-1], arrays[2][-1], arrays[3][-1], arrays[4][-1]])
+    if not np.allclose(final_state, state, rtol=1.0e-10, atol=1.0e-12):
+        raise ResultIntegrityError("Exact termination state must equal the final stored state")
+    if solution.completed_to_requested_end:
+        raise ResultIntegrityError(
+            "Domain-terminated solution cannot be marked complete to the requested endpoint"
+        )
+
+
 def _assessment(
     *,
     outcome: OutcomeClass,
@@ -176,7 +242,7 @@ def assess_solution(
     hubble_zero_tolerance: float = 1.0e-10,
     return_tolerance: float = 1.0e-3,
 ) -> OutcomeAssessment:
-    """Classify one completed integration without making a cyclicity claim."""
+    """Classify one returned integration without making a cyclicity claim."""
 
     constraint_threshold = _positive_finite("constraint_threshold", constraint_threshold)
     hubble_zero_tolerance = _positive_finite(
@@ -231,6 +297,8 @@ def assess_solution(
             max_constraint=max_constraint,
         )
 
+    _validate_termination_metadata(solution, arrays)
+
     if np.any(arrays[1] <= 0.0):
         return _assessment(
             outcome=OutcomeClass.NONPOSITIVE_SCALE_FACTOR,
@@ -283,6 +351,24 @@ def assess_solution(
         return_metrics,
         tolerance=return_tolerance,
     )
+
+    if solution.termination_kind is not None:
+        return _assessment(
+            outcome=OutcomeClass.PHYSICAL_DOMAIN_TERMINATION,
+            reason=(
+                f"Integration reached declared domain boundary {solution.termination_kind} "
+                f"at t={float(solution.termination_time):.6g}: observed "
+                f"{float(solution.termination_observed):.6g} {solution.termination_units}, "
+                f"threshold {float(solution.termination_threshold):.6g} "
+                f"{solution.termination_units}. This is an analysis boundary, not a "
+                "spacetime singularity claim."
+            ),
+            numerically_valid=False,
+            event_sequence=event_sequence,
+            max_constraint=max_constraint,
+            return_classifications=return_classifications,
+        )
+
     bounce_count = event_sequence.count("bounce")
     turnaround_count = event_sequence.count("turnaround")
     hubble = arrays[2]

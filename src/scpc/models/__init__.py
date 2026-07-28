@@ -1,4 +1,5 @@
 from .phase import (
+    DOMAIN_TERMINATION_KINDS,
     PeriodicPotential,
     SCPCIntegrationDomain,
     SCPCParameters,
@@ -8,6 +9,7 @@ from .phase import (
 from .standard import ExpansionParameters, FLRWExpansion
 
 __all__ = [
+    "DOMAIN_TERMINATION_KINDS",
     "ExpansionParameters",
     "FLRWExpansion",
     "PeriodicPotential",

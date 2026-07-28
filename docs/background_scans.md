@@ -38,32 +38,72 @@ Every complete numerical specification receives a SHA-256 identity before execut
 - adjacent representable floating-point values remain distinct;
 - execution-equivalent declarations such as an integer sample count written as `101` or `101.0` share one identity;
 - nonintegral values for integer execution fields are rejected;
-- solver method, tolerances, sample count, model parameters, and initial conditions are part of the experiment identity;
+- solver method, tolerances, domain thresholds, model parameters, and initial conditions are part of the experiment identity;
 - duplicate complete executable specifications are rejected.
 
 The short `run_id` is a 24-hex-character prefix for filenames and tables. The full SHA-256 digest remains in the index and resume metadata.
 
+## Declared integration domain
+
+A background run may declare root-localized analysis boundaries under `run.domain`:
+
+```yaml
+run:
+  t_start: 0.0
+  t_end: 1.0
+  samples: 201
+  method: DOP853
+  rtol: 1.0e-10
+  atol: 1.0e-12
+  domain:
+    min_scale_factor: 0.8
+    max_scale_factor: 10.0
+    max_total_density: 100.0
+    max_abs_hubble: 10.0
+    max_abs_ricci_scalar: 100.0
+    max_abs_field: 20.0
+    max_abs_field_velocity: 20.0
+```
+
+Every configured threshold must be finite and positive. `min_scale_factor` must be smaller than `max_scale_factor`. A coordinate bound on the field is rejected for a circular target space because it is not invariant under the compact identification.
+
+Reaching a configured surface terminates the integration at the solver-localized root. The exact termination time and state are appended to the stored trajectory even when the root lies between plotting samples. The record contains:
+
+- termination kind;
+- exact time;
+- threshold;
+- observed boundary value;
+- units;
+- whether the requested endpoint was reached.
+
+A domain-terminated run is returned successfully by the solver but is classified as `physical_domain_termination` and rejected for full-interval morphology. It is not a solver failure and is not a spacetime-singularity claim. Ending before the requested endpoint without a declared termination event is a result-integrity error.
+
+The reproducible one-axis example is `configs/scans/stage1_domain_example.yaml`.
+
 ## Outcome hierarchy
 
-Completed trajectories are classified only after checking:
+Returned trajectories are classified only after checking:
 
 1. all stored arrays are nonempty, one-dimensional, equal-length, and finite;
 2. stored times are strictly increasing;
 3. event times and event kinds are internally consistent;
-4. the scale factor remains positive;
-5. the Friedmann residual remains below the declared threshold;
-6. no degenerate turning root is present;
-7. every detectable sampled Hubble sign transition, including transitions across zero plateaus, is represented by a matching root-localized event.
+4. termination metadata is complete and agrees with the exact final state;
+5. the scale factor remains positive;
+6. the Friedmann residual remains below the declared threshold;
+7. no degenerate turning root is present;
+8. every detectable sampled Hubble sign transition, including transitions across zero plateaus, is represented by a matching root-localized event.
 
-The current morphology classes are:
+The current classes include:
 
+- physical-domain termination before the requested endpoint;
 - monotonic expansion;
 - monotonic contraction;
 - quasi-static or ambiguous behavior without a recorded crossing;
 - recollapse without a bounce in the integrated interval;
 - one-off bounce;
 - one bounce and one turnaround;
-- repeated turning points.
+- repeated turning points;
+- explicitly rejected numerical-integrity classes.
 
 Repeated turning points are not labelled a cyclic solution. Same-kind return diagnostics remain separate and do not establish recurrence or stability.
 
@@ -73,14 +113,14 @@ Every planned run remains represented even when no accepted solution is returned
 
 - invalid initial Friedmann constraint;
 - configuration error;
-- physical-domain failure;
+- physical-domain failure outside the declared event system;
 - solver failure;
 - result-integrity error;
 - output-serialization error;
 - unexpected error;
-- returned but numerically rejected trajectory classes such as a constraint violation or nonfinite state.
+- returned but rejected classes such as declared domain termination, constraint violation, or nonfinite state.
 
-A solver, integrity, or output exception is not called a spacetime singularity. The exact exception type and message are preserved for audit and later reclassification.
+A solver, integrity, output, or domain-boundary record is not called a spacetime singularity. The exact exception type and message are preserved for audit and later reclassification.
 
 ## Output contract
 
@@ -105,10 +145,11 @@ trajectories/
 - event counts and event sequence;
 - maximum constraint residual;
 - return-sequence summaries;
+- completion and domain-termination fields;
 - solver metadata;
 - retained trajectory path, when applicable.
 
-Nested fields are canonical JSON strings so the CSV remains interoperable without discarding structure.
+Nested fields are canonical JSON strings so the CSV remains interoperable without discarding structure. `scan_summary.json` includes counts by status, outcome, failure class, and termination kind.
 
 ## Resume integrity
 
@@ -136,17 +177,18 @@ A rerun does not delete the previous durable result before replacement. The sequ
 5. only then remove an obsolete previously referenced trajectory;
 6. atomically refresh the summary and final provenance products.
 
-If execution stops before the row replacement, the previous row and trajectory remain valid. On the next resume, pending and unreferenced scan-owned transaction files are removed after the existing index has been validated. A deterministic rerun may recreate the same content-addressed filename, in which case that file becomes the newly referenced result rather than remaining an orphan.
+If execution stops before the row replacement, the previous row and trajectory remain valid. On the next resume, pending and unreferenced scan-owned transaction files are removed after the existing index has been validated.
 
 ## Trajectory retention
 
 The index always stores every result, but full trajectories are retained only when:
 
-- the completed solution passes numerical-validity checks;
+- the completed solution reaches the requested endpoint;
+- it passes numerical-validity checks;
 - its outcome is listed in the protocol retention policy;
 - the hard trajectory-count limit has not been reached.
 
-NetCDF trajectories use content-addressed filenames and atomic finalization. Serialization failures are recorded as output failures without replacing a previous durable result.
+Domain-terminated runs remain represented by exact scalar termination fields in the index. They are not retained as full candidate trajectories by the current policy because they did not complete the declared interval.
 
 ## Outcome maps
 

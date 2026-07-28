@@ -42,6 +42,13 @@ _EXECUTION_TYPES: dict[str, type] = {
     "run.method": str,
     "run.rtol": float,
     "run.atol": float,
+    "run.domain.min_scale_factor": float,
+    "run.domain.max_scale_factor": float,
+    "run.domain.max_total_density": float,
+    "run.domain.max_abs_hubble": float,
+    "run.domain.max_abs_ricci_scalar": float,
+    "run.domain.max_abs_field": float,
+    "run.domain.max_abs_field_velocity": float,
 }
 
 
@@ -114,7 +121,17 @@ def normalize_background_specification(specification: dict[str, Any]) -> dict[st
             value = _get_existing_path(normalized, path)
         except KeyError:
             continue
+        if value is None:
+            continue
         _set_existing_path(normalized, path, _execution_cast(path, value, expected))
+
+    run = normalized.get("run")
+    if isinstance(run, dict) and "domain" in run:
+        domain = run["domain"]
+        if domain is None or domain == {}:
+            run.pop("domain")
+        elif not isinstance(domain, dict):
+            raise ValueError("run.domain must be a mapping when configured")
     return normalized
 
 

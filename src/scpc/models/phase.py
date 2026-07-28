@@ -6,6 +6,7 @@ background-theory baseline, not a claim that stable cyclic solutions exist.
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from numbers import Integral
 from typing import Any, Callable, Literal
@@ -13,6 +14,17 @@ from typing import Any, Callable, Literal
 import numpy as np
 import xarray as xr
 from scipy.integrate import solve_ivp
+
+
+DOMAIN_TERMINATION_KINDS = (
+    "minimum_scale_factor",
+    "maximum_scale_factor",
+    "maximum_total_density",
+    "maximum_absolute_hubble",
+    "maximum_absolute_ricci_scalar",
+    "maximum_absolute_field",
+    "maximum_absolute_field_velocity",
+)
 
 
 @dataclass(frozen=True)
@@ -148,22 +160,55 @@ class SCPCSolution:
         if self.requested_end_time is None or self.t.size == 0:
             return self.termination_kind is None
         scale = max(1.0, abs(float(self.requested_end_time)))
-        return self.termination_kind is None and np.isclose(
-            float(self.t[-1]),
-            float(self.requested_end_time),
-            rtol=0.0,
-            atol=64.0 * np.finfo(float).eps * scale,
+        return bool(
+            self.termination_kind is None
+            and np.isclose(
+                float(self.t[-1]),
+                float(self.requested_end_time),
+                rtol=0.0,
+                atol=64.0 * np.finfo(float).eps * scale,
+            )
         )
 
+    def _termination_state(self) -> np.ndarray | None:
+        if self.termination_kind is None:
+            fields = (
+                self.termination_time,
+                self.termination_state_vector,
+                self.termination_threshold,
+                self.termination_observed,
+                self.termination_units,
+            )
+            if any(value is not None for value in fields):
+                raise ValueError("Nonterminated solution contains partial termination metadata")
+            return None
+        if self.termination_kind not in DOMAIN_TERMINATION_KINDS:
+            raise ValueError(f"Unknown termination kind: {self.termination_kind}")
+        if (
+            self.termination_time is None
+            or self.termination_state_vector is None
+            or self.termination_threshold is None
+            or self.termination_observed is None
+            or not self.termination_units
+        ):
+            raise ValueError("Terminated solutions require complete termination metadata")
+        state = np.asarray(self.termination_state_vector, dtype=float)
+        if state.shape != (4,) or np.any(~np.isfinite(state)):
+            raise ValueError("termination_state_vector must be a finite array with shape (4,)")
+        return state
+
     def to_xarray(self) -> xr.Dataset:
+        termination_state = self._termination_state()
         attrs: dict[str, Any] = {
             "model": "canonical_scpc_phase_baseline",
             "unit_system": "natural units c=hbar=M_pl=1",
             "max_abs_constraint_residual": float(np.max(np.abs(self.constraint_residual))),
             "parameters": str(asdict(self.parameters)),
-            "completed_to_requested_end": self.completed_to_requested_end,
+            "completed_to_requested_end": int(self.completed_to_requested_end),
             **self.solver_metadata,
         }
+        if self.requested_end_time is not None:
+            attrs["requested_end_time"] = float(self.requested_end_time)
         if self.termination_kind is not None:
             attrs.update(
                 {
@@ -217,21 +262,25 @@ class SCPCSolution:
                     {"codes": "1=bounce,-1=turnaround,0=degenerate"},
                 )
 
-        if self.termination_kind is not None:
-            if self.termination_time is None or self.termination_state_vector is None:
-                raise ValueError("Terminated solutions require exact termination time and state")
-            state = np.asarray(self.termination_state_vector, dtype=float)
-            if state.shape != (4,):
-                raise ValueError("termination_state_vector must have shape (4,)")
+        if termination_state is not None:
             dataset["termination_time"] = xr.DataArray(
                 float(self.termination_time),
                 attrs={"units": "M_pl^-1"},
             )
-            dataset["termination_scale_factor"] = xr.DataArray(state[0], attrs={"units": "1"})
-            dataset["termination_hubble"] = xr.DataArray(state[1], attrs={"units": "M_pl"})
-            dataset["termination_field"] = xr.DataArray(state[2], attrs={"units": "M_pl"})
+            dataset["termination_scale_factor"] = xr.DataArray(
+                termination_state[0],
+                attrs={"units": "1"},
+            )
+            dataset["termination_hubble"] = xr.DataArray(
+                termination_state[1],
+                attrs={"units": "M_pl"},
+            )
+            dataset["termination_field"] = xr.DataArray(
+                termination_state[2],
+                attrs={"units": "M_pl"},
+            )
             dataset["termination_field_velocity"] = xr.DataArray(
-                state[3],
+                termination_state[3],
                 attrs={"units": "M_pl^2"},
             )
         return dataset
@@ -529,7 +578,11 @@ def integrate_scpc(
             "solver_status": int(sol.status),
             "requested_end_time": float(t_span[1]),
             "reached_end_time": float(times[-1]),
-            "integration_domain": str(asdict(domain)) if domain is not None else "{}",
+            "integration_domain": json.dumps(
+                asdict(domain) if domain is not None else {},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
         },
         turning_state_vectors=event_states,
         termination_kind=termination_kind,

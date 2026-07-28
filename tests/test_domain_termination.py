@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import xarray as xr
 
 from scpc.models.phase import (
     PeriodicPotential,
@@ -79,7 +80,7 @@ def test_unbounded_reference_run_reaches_requested_end() -> None:
     assert solution.t[-1] == pytest.approx(0.5)
 
 
-def test_termination_metadata_and_exact_state_are_serialized() -> None:
+def test_termination_metadata_and_exact_state_are_scipy_netcdf_serializable(tmp_path) -> None:
     solution = integrate_scpc(
         _de_sitter_parameters(),
         t_span=(0.0, 1.0),
@@ -93,10 +94,17 @@ def test_termination_metadata_and_exact_state_are_serialized() -> None:
     dataset = solution.to_xarray()
 
     assert dataset.attrs["termination_kind"] == "minimum_scale_factor"
-    assert dataset.attrs["completed_to_requested_end"] is False
+    assert dataset.attrs["completed_to_requested_end"] == 0
     assert float(dataset["termination_time"]) == pytest.approx(solution.termination_time)
     assert float(dataset["termination_scale_factor"]) == pytest.approx(0.85)
     assert float(dataset["termination_hubble"]) == pytest.approx(-1.0)
+
+    destination = tmp_path / "terminated.nc"
+    dataset.to_netcdf(destination, engine="scipy")
+    restored = xr.load_dataset(destination, engine="scipy")
+    assert restored.attrs["termination_kind"] == "minimum_scale_factor"
+    assert restored.attrs["completed_to_requested_end"] == 0
+    assert float(restored["termination_scale_factor"]) == pytest.approx(0.85)
 
 
 def test_initial_state_outside_domain_is_rejected_before_solver_execution() -> None:

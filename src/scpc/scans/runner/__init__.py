@@ -1,9 +1,8 @@
 """Transactional deterministic background-scan execution.
 
-This package supersedes the initial single-module Stage 1 runner. It preserves
-the previous durable result during reruns, binds resume to the exact SCPC source
-and numerical runtime, and treats orphan cleanup as recovery rather than proof
-of a physical outcome.
+This package preserves the previous durable result during reruns, binds resume
+to the exact SCPC source and numerical runtime, and treats domain termination
+and orphan cleanup as analysis records rather than proof of a physical outcome.
 """
 
 from __future__ import annotations
@@ -15,7 +14,12 @@ from typing import Any
 
 import yaml
 
-from scpc.models.phase import PeriodicPotential, SCPCParameters, integrate_scpc
+from scpc.models.phase import (
+    PeriodicPotential,
+    SCPCIntegrationDomain,
+    SCPCParameters,
+    integrate_scpc,
+)
 from scpc.numerics.provenance import (
     build_output_inventory,
     build_provenance,
@@ -62,6 +66,13 @@ def _integrate_point(point: ScanPoint):
     )
     initial = specification["initial_conditions"]
     run = specification["run"]
+    domain_config = run.get("domain")
+    if domain_config is None:
+        domain = None
+    elif not isinstance(domain_config, dict):
+        raise TypeError("run.domain must be a mapping when configured")
+    else:
+        domain = SCPCIntegrationDomain(**domain_config)
     return integrate_scpc(
         parameters,
         t_span=(float(run["t_start"]), float(run["t_end"])),
@@ -73,6 +84,7 @@ def _integrate_point(point: ScanPoint):
         phi0=float(initial["phi"]),
         phi_dot0=float(initial["phi_dot"]),
         branch=int(initial["branch"]),
+        domain=domain,
     )
 
 
@@ -90,6 +102,15 @@ def _summary(rows: list[dict[str, Any]], planned_runs: int) -> dict[str, Any]:
                     row["failure_class"]
                     for row in rows
                     if row.get("failure_class")
+                ).items()
+            )
+        ),
+        "termination_kind_counts": dict(
+            sorted(
+                Counter(
+                    row["termination_kind"]
+                    for row in rows
+                    if row.get("termination_kind")
                 ).items()
             )
         ),
