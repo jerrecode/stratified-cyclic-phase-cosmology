@@ -18,7 +18,12 @@ from scpc.numerics.convergence import (
     run_tolerance_ladder,
 )
 from scpc.numerics.cycles import classify_recurrence, cycle_return_metrics
-from scpc.numerics.provenance import build_provenance, sha256_file, write_provenance
+from scpc.numerics.provenance import (
+    build_output_inventory,
+    build_provenance,
+    sha256_file,
+    write_provenance,
+)
 from scpc.visualization.backgrounds import plot_expansion_comparison, plot_scpc_background
 
 
@@ -66,8 +71,14 @@ def compare_models(config_path: str | Path, output_dir: str | Path) -> Path:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    plot_expansion_comparison(tables, output / "hubble_comparison.png")
-    write_provenance(output / "provenance.json", build_provenance(config_path, {"workflow": "compare_models"}))
+    figure_path = output / "hubble_comparison.png"
+    plot_expansion_comparison(tables, figure_path)
+    provenance = build_provenance(config_path, {"workflow": "compare_models"})
+    provenance["outputs"] = build_output_inventory(
+        [csv_path, figure_path],
+        relative_to=output,
+    )
+    write_provenance(output / "provenance.json", provenance)
     return csv_path
 
 
@@ -109,12 +120,16 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
         "return_tolerance": return_tolerance,
         "recurrence_assessment": "not_performed_requires_repeated_converged_multi_solver_returns",
     }
-    (output / "diagnostics.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
-    plot_scpc_background(solution, output / "background.png")
-    write_provenance(
-        output / "provenance.json",
-        build_provenance(config_path, {"workflow": "run_scpc_background"}),
+    diagnostics_path = output / "diagnostics.json"
+    diagnostics_path.write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+    figure_path = output / "background.png"
+    plot_scpc_background(solution, figure_path)
+    provenance = build_provenance(config_path, {"workflow": "run_scpc_background"})
+    provenance["outputs"] = build_output_inventory(
+        [dataset_path, diagnostics_path, figure_path],
+        relative_to=output,
     )
+    write_provenance(output / "provenance.json", provenance)
     return dataset_path
 
 
@@ -184,15 +199,14 @@ def verify_scpc_background(config_path: str | Path, output_dir: str | Path) -> P
     output.mkdir(parents=True, exist_ok=True)
     report_path = output / "verification.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    write_provenance(
-        output / "provenance.json",
-        build_provenance(
-            config_path,
-            {
-                "workflow": "verify_scpc_background",
-                "baseline_config": str(baseline_path),
-                "baseline_config_sha256": sha256_file(baseline_path),
-            },
-        ),
+    provenance = build_provenance(
+        config_path,
+        {
+            "workflow": "verify_scpc_background",
+            "baseline_config": str(baseline_path),
+            "baseline_config_sha256": sha256_file(baseline_path),
+        },
     )
+    provenance["outputs"] = build_output_inventory([report_path], relative_to=output)
+    write_provenance(output / "provenance.json", provenance)
     return report_path
