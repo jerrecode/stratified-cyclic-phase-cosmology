@@ -1,0 +1,337 @@
+manifest_version: 0.1.0
+metadata:
+  title: SCPC public cosmology data-release registry
+  updated: "2026-07-28"
+  maintainer: Jeremy Erich Resch
+  scope: >-
+    Public releases for parameter inference, validation, standardized model
+    comparison, and reproducible visualization. Compact likelihoods and summary
+    products are preferred; raw maps and catalogs are optional.
+conventions:
+  unit_system: Preserve release-native units and record conversions explicitly.
+  dimension_vocabulary: {M: mass, L: length, T: time, Theta: temperature, A: angle, "1": dimensionless}
+  relations:
+    - "H=(da/dt)/a; dimensions T^-1"
+    - "a=1/(1+z); dimensionless"
+    - "D_ell=ell(ell+1)C_ell/(2*pi)"
+    - "E(z)=H(z)/H0"
+    - "Omega_GW=(1/rho_critical)d rho_GW/d ln f"
+releases:
+  - id: planck-2018-pr3
+    title: Planck 2018 Legacy Release (PR3)
+    provider: ESA / Planck Collaboration
+    release_date: "2018-07-17"
+    priority: core
+    scientific_roles: [cmb_primary_likelihood, cmb_lensing, parameter_benchmark]
+    landing_page: https://pla.esac.esa.int/
+    documentation: [https://www.cosmos.esa.int/web/planck/publications]
+    license: ESA archive terms; verify per product
+    citation: Planck Collaboration 2018 results papers
+    verified_on: "2026-07-28"
+    products:
+      - id: cosmology-products
+        title: Plik/CamSpec, low-ell, lensing likelihoods and chains
+        role: [parameter_fit, model_comparison]
+        formats: [FITS, text, likelihood_code, tar.gz]
+        approximate_size: product-dependent
+        variable_inventory_complete: false
+        access:
+          method: archive_query
+          url: https://pla.esac.esa.int/
+          instructions: Select exact PR3 cosmology products; preserve product names, checksums, masks, nuisance conventions, and chain metadata.
+        variables:
+          - {name: cmb_angular_power_spectra, symbol: C_ell_XY, unit: "K^2 or microK^2 as declared", dimensions: Theta^2, coordinates: [ell, spectrum_type], resolution: release-native bins, description: Temperature and polarization spectra, relations: ["D_ell=ell(ell+1)C_ell/(2*pi)"]}
+          - {name: covariance, unit: squared spectrum unit, dimensions: Theta^4, coordinates: [bandpower_index, bandpower_index], resolution: likelihood-native, description: Statistical and systematic covariance}
+
+  - id: planck-pr4-npipe
+    title: Planck PR4 / NPIPE maps and derived products
+    provider: ESA / Planck Collaboration
+    release_date: "2020"
+    priority: extended
+    scientific_roles: [cmb_map_validation, cmb_lensing_comparison]
+    landing_page: https://pla.esac.esa.int/
+    documentation: [https://pla.esac.esa.int/]
+    license: ESA archive terms; verify per product
+    citation: Planck Collaboration NPIPE release papers
+    verified_on: "2026-07-28"
+    products:
+      - id: frequency-maps
+        title: NPIPE frequency maps
+        role: [optional_map_validation]
+        formats: [FITS, HEALPix]
+        approximate_size: multi-GB
+        variable_inventory_complete: false
+        access: {method: archive_query, url: https://pla.esac.esa.int/, instructions: Disable legacy-only filtering, select PR4 maps and matching masks/beams, and record NSIDE and checksum metadata.}
+        variables:
+          - {name: sky_temperature_polarization, unit: release-declared, dimensions: Theta, coordinates: [healpix_pixel, stokes_component, frequency], resolution: HEALPix NSIDE and beam FWHM per map, description: NPIPE processed sky maps}
+
+  - id: act-dr6.02
+    title: Atacama Cosmology Telescope DR6.02
+    provider: ACT Collaboration / NASA LAMBDA
+    release_date: "2025"
+    priority: core
+    scientific_roles: [cmb_likelihood, cmb_lensing, posterior_comparison]
+    landing_page: https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/
+    documentation: [https://act.princeton.edu/act-dr6-data-products, https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/index.html]
+    license: Follow NASA LAMBDA and ACT release terms
+    citation: ACT DR6 likelihood, spectra, and lensing papers
+    verified_on: "2026-07-28"
+    products:
+      - id: likelihoods-and-chains
+        title: DR6 spectra, likelihoods, PSPIPE products, and chains
+        role: [parameter_fit, cmb_cross_validation]
+        formats: [FITS, HDF5, text, likelihood_code, chain]
+        approximate_size: product-dependent
+        variable_inventory_complete: false
+        access: {method: html_index, url: https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/, instructions: Select the documented DR6.02 likelihood/spectrum release and retain beam, mask, covariance, nuisance, and version files together.}
+        variables:
+          - {name: cmb_bandpowers, symbol: D_ell_XY, unit: microK^2, dimensions: Theta^2, coordinates: [bandpower, spectrum_type, frequency_pair], resolution: release-native bins, description: Multifrequency temperature and polarization bandpowers}
+          - {name: lensing_power_spectrum, symbol: C_L_phiphi, unit: "1", dimensions: "1", coordinates: [L], resolution: release-native bins, description: Reconstructed CMB lensing-potential spectrum}
+
+  - id: spt3g-d1
+    title: SPT-3G D1 cosmology products
+    provider: SPT Collaboration / NASA LAMBDA
+    release_date: "2025-2026"
+    priority: core
+    scientific_roles: [small_scale_cmb, cmb_likelihood, posterior_comparison]
+    landing_page: https://lambda.gsfc.nasa.gov/product/spt/spt3g_d1/
+    documentation: [https://lambda.gsfc.nasa.gov/product/spt/spt3g_d1/]
+    license: Follow NASA LAMBDA and SPT release terms
+    citation: Applicable SPT-3G D1 spectra and cosmology papers
+    verified_on: "2026-07-28"
+    products:
+      - id: spectra-likelihoods
+        title: D1 spectra, covariance, likelihoods, and chains
+        role: [parameter_fit, high_ell_validation]
+        formats: [FITS, text, likelihood_code, chain]
+        approximate_size: product-dependent
+        variable_inventory_complete: false
+        access: {method: html_index, url: https://lambda.gsfc.nasa.gov/product/spt/spt3g_d1/, instructions: Download one internally consistent release bundle and preserve foreground/nuisance conventions.}
+        variables:
+          - {name: cmb_bandpowers, symbol: D_ell_XY, unit: microK^2, dimensions: Theta^2, coordinates: [bandpower, spectrum_type, frequency_pair], resolution: release-native bins, description: SPT-3G temperature and polarization spectra}
+
+  - id: bicep-keck-bk18
+    title: BICEP/Keck BK18 data products
+    provider: BICEP/Keck Collaboration / NASA LAMBDA
+    release_date: "2021"
+    priority: core
+    scientific_roles: [cmb_b_modes, tensor_constraint, foreground_validation]
+    landing_page: https://lambda.gsfc.nasa.gov/product/bicepkeck/bicep_keck_2018/
+    documentation: [https://lambda.gsfc.nasa.gov/product/bicepkeck/bicep_keck_2018/]
+    license: Follow NASA LAMBDA and BICEP/Keck release terms
+    citation: BICEP/Keck 2018 analysis release paper
+    verified_on: "2026-07-28"
+    products:
+      - id: bandpowers-likelihood
+        title: BK18 bandpowers, covariance, likelihood, and CosmoMC chains
+        role: [tensor_parameter_fit, primordial_spectrum_validation]
+        formats: [FITS, text, likelihood_code, chain]
+        approximate_size: product-dependent
+        variable_inventory_complete: false
+        access: {method: html_index, url: https://lambda.gsfc.nasa.gov/product/bicepkeck/bicep_keck_2018/, instructions: Download bandpowers, covariance, window functions, foreground model, and matching likelihood version.}
+        variables:
+          - {name: b_mode_bandpower, symbol: D_ell_BB, unit: microK^2, dimensions: Theta^2, coordinates: [bandpower, frequency_pair], resolution: BK18 bins, description: Degree-scale B-mode bandpowers}
+
+  - id: desi-dr2-cosmology
+    title: DESI Data Release 2 cosmology products
+    provider: DESI Collaboration
+    release_date: "2025"
+    priority: core
+    scientific_roles: [bao_likelihood, full_shape_likelihood, posterior_comparison]
+    landing_page: https://data.desi.lbl.gov/doc/releases/dr2/
+    documentation: [https://data.desi.lbl.gov/doc/releases/dr2/, https://github.com/cosmodesi/desi-y3-cosmology]
+    license: DESI public data policy and repository licenses
+    citation: DESI DR2 cosmology papers applicable to selected product
+    verified_on: "2026-07-28"
+    notes: DR2 cosmology products are public; underlying DR2 spectra/redshifts may follow a separate release schedule.
+    products:
+      - id: cosmology-repository
+        title: BAO/full-shape likelihood inputs, chains, and posterior maximization products
+        role: [parameter_fit, model_selection, visualization]
+        formats: [git, YAML, text, chain, covariance]
+        approximate_size: repository-scale
+        variable_inventory_complete: false
+        access: {method: git, url: https://github.com/cosmodesi/desi-y3-cosmology.git, ref: main, target_name: desi-y3-cosmology, instructions: Clone and record the exact commit; use only products tied to the cited DR2 analysis.}
+        variables:
+          - {name: distance_ratios, symbol: [DM_over_rd, DH_over_rd, DV_over_rd], unit: "1", dimensions: "1", coordinates: [redshift, tracer], resolution: release redshift bins, description: BAO distance measurements normalized by sound horizon}
+          - {name: growth_rate, symbol: f_sigma8, unit: "1", dimensions: "1", coordinates: [redshift, tracer], resolution: analysis bins, description: Growth-rate observable where supplied}
+
+  - id: desi-dr1-spectroscopic
+    title: DESI Data Release 1
+    provider: DESI Collaboration
+    release_date: "2024"
+    priority: extended
+    scientific_roles: [spectroscopic_catalog_validation, clustering_reanalysis]
+    landing_page: https://data.desi.lbl.gov/doc/releases/dr1/
+    documentation: [https://data.desi.lbl.gov/doc/releases/dr1/]
+    license: DESI public data policy
+    citation: DESI DR1 data release paper
+    verified_on: "2026-07-28"
+    products:
+      - id: catalogs
+        title: Spectroscopic catalogs, randoms, masks, and clustering products
+        role: [optional_catalog_reanalysis]
+        formats: [FITS, HDF5, text]
+        approximate_size: large
+        variable_inventory_complete: false
+        access: {method: html_index, url: https://data.desi.lbl.gov/public/dr1/, instructions: Select documented tracer catalogs and matching randoms/masks; record file versions, cuts, and checksums.}
+        variables:
+          - {name: object_redshift, symbol: z, unit: "1", dimensions: "1", coordinates: [object], resolution: per object, description: Pipeline spectroscopic redshift}
+          - {name: sky_position, symbol: [RA, DEC], unit: deg, dimensions: A, coordinates: [object], resolution: per object, description: Equatorial coordinates}
+
+  - id: pantheon-plus-shoes
+    title: Pantheon+ and SH0ES public data release
+    provider: Pantheon+ / SH0ES teams
+    release_date: "2022"
+    priority: core
+    scientific_roles: [supernova_distance_likelihood, expansion_history, hubble_calibration]
+    landing_page: https://github.com/PantheonPlusSH0ES/DataRelease
+    documentation: [https://github.com/PantheonPlusSH0ES/DataRelease]
+    license: Repository release terms; inspect included files
+    citation: Brout et al. 2022 and Riess et al. 2022 as applicable
+    verified_on: "2026-07-28"
+    products:
+      - id: repository
+        title: Distance-modulus tables, covariance matrices, and likelihood examples
+        role: [parameter_fit, distance_redshift_visualization]
+        formats: [git, text, covariance]
+        approximate_size: repository-scale
+        variable_inventory_complete: false
+        access: {method: git, url: https://github.com/PantheonPlusSH0ES/DataRelease.git, ref: main, target_name: pantheon-plus-shoes, instructions: Clone and record the exact commit; preserve covariance and calibrator/sample definitions.}
+        variables:
+          - {name: distance_modulus, symbol: mu, unit: mag, dimensions: "1", coordinates: [supernova], resolution: per object or release bin, description: Standardized Type Ia supernova distance modulus, relations: ["mu=5 log10(DL/10 pc)"]}
+          - {name: redshift, symbol: z, unit: "1", dimensions: "1", coordinates: [supernova], resolution: per object, description: Heliocentric and/or CMB-frame redshift as declared}
+
+  - id: des-y6
+    title: Dark Energy Survey Year 6 cosmology products
+    provider: Dark Energy Survey Collaboration
+    release_date: "2025-2026"
+    priority: core
+    scientific_roles: [weak_lensing, galaxy_clustering, three_by_two_point_likelihood]
+    landing_page: https://des.ncsa.illinois.edu/releases/y6a2
+    documentation: [https://des.ncsa.illinois.edu/releases/y6a2, https://github.com/des-science/DESY6-3x2pt-likelihood]
+    license: DES public release and repository terms
+    citation: Applicable DES Y6 cosmology and data-release papers
+    verified_on: "2026-07-28"
+    products:
+      - id: cosmology-products
+        title: Y6 two-point measurements, covariance, likelihood, redshift distributions, and chains
+        role: [parameter_fit, weak_lensing_validation]
+        formats: [FITS, HDF5, text, likelihood_code, chain]
+        approximate_size: product-dependent
+        variable_inventory_complete: false
+        access: {method: html_index, url: https://des.ncsa.illinois.edu/releases/y6a2, instructions: Select a single documented Y6 cosmology release and preserve covariance, masks, n(z), scale cuts, nuisance priors, and likelihood version.}
+        variables:
+          - {name: two_point_correlation, symbol: [xi_plus, xi_minus, gamma_t, w_theta], unit: "1", dimensions: "1", coordinates: [angular_bin, tomographic_bin_pair, statistic], resolution: release angular bins, description: Cosmic shear, galaxy-galaxy lensing, and clustering observables}
+
+  - id: sdss-eboss-dr17
+    title: SDSS-IV eBOSS final cosmology / DR17 products
+    provider: Sloan Digital Sky Survey
+    release_date: "2021-2022"
+    priority: extended
+    scientific_roles: [bao_rsd_validation, legacy_lss_comparison]
+    landing_page: https://www.sdss.org/dr17/
+    documentation: [https://www.sdss.org/dr17/, https://www.sdss.org/science/final-bao-and-rsd-measurements/]
+    license: SDSS data-use policy
+    citation: eBOSS final cosmology and DR17 papers
+    verified_on: "2026-07-28"
+    products:
+      - id: final-bao-rsd
+        title: Final BAO/RSD measurements and covariances
+        role: [legacy_parameter_fit, regression_validation]
+        formats: [text, FITS, covariance]
+        approximate_size: product-dependent
+        variable_inventory_complete: false
+        access: {method: html_index, url: https://www.sdss.org/science/final-bao-and-rsd-measurements/, instructions: Download tracer-specific measurements and matching covariance/model conventions.}
+        variables:
+          - {name: bao_rsd_summary, symbol: [DM_over_rd, DH_over_rd, f_sigma8], unit: "1", dimensions: "1", coordinates: [redshift, tracer, observable], resolution: published bins, description: Final eBOSS distance and growth summaries}
+
+  - id: euclid-q1
+    title: Euclid Quick Data Release 1
+    provider: ESA / Euclid Consortium
+    release_date: "2025-03-19"
+    priority: context_only
+    scientific_roles: [pipeline_validation, catalog_visualization, future_interface_validation]
+    landing_page: https://euclid.esac.esa.int/dr/q1/
+    documentation: [https://euclid.esac.esa.int/dr/q1/expsup/master.html, https://euclid.esac.esa.int/dr/q1/dpdd/frontpage.html]
+    license: Euclid Science Archive terms and citation instructions
+    citation: Euclid Q1 overview and applicable processing papers
+    verified_on: "2026-07-28"
+    notes: Q1 is not a cosmology release and must not be treated as a Euclid cosmological likelihood.
+    products:
+      - id: q1-archive
+        title: Q1 images, spectra, catalogs, masks, and photometric-redshift products
+        role: [context_only, data_interface_testing, visualization]
+        formats: [FITS, catalog_table, spectrum]
+        approximate_size: archive-scale; 63.1 deg^2 and tens of millions of detections
+        variable_inventory_complete: false
+        access: {method: archive_query, url: https://eas.esac.esa.int/sas/, instructions: Query the Euclid Science Archive using documented web/TAP services; do not label Q1 products as a cosmology likelihood.}
+        variables:
+          - {name: photometric_catalog, unit: mixed, dimensions: mixed, coordinates: [object, attribute], resolution: per object, description: Multiband detections, photometry, morphology, and photo-z information}
+
+  - id: gwosc-o4
+    title: Gravitational-Wave Open Science Center O4 strain release
+    provider: LIGO / Virgo / KAGRA Collaborations
+    release_date: "2023-2026"
+    priority: extended
+    scientific_roles: [gravitational_wave_background_validation, transient_constraints, detector_noise]
+    landing_page: https://gwosc.org/O4/
+    documentation: [https://gwosc.org/O4/]
+    license: CC BY 4.0 for released O4 data
+    citation: GWOSC and applicable O4 release documentation
+    verified_on: "2026-07-28"
+    products:
+      - id: strain
+        title: O4a and O4b calibrated detector strain
+        role: [optional_gw_analysis, noise_validation]
+        formats: [HDF5, GWF]
+        approximate_size: very large; query by interval
+        variable_inventory_complete: false
+        access: {method: datafind, url: https://gwosc.org/O4/, instructions: Query detector, frame type, sample rate, and GPS interval through GWOSC/DataFind; avoid full-run bulk download by default, command_template: "gw_data_find -r datafind.gwosc.org -o H -t FRAME_TYPE -s GPS_START -e GPS_END -u file"}
+        variables:
+          - {name: strain, symbol: h_t, unit: "1", dimensions: "1", coordinates: [gps_time, detector], resolution: 4096 Hz or 16384 Hz products, description: Calibrated dimensionless gravitational-wave strain time series}
+
+  - id: nanograv-15yr
+    title: NANOGrav 15-year data set
+    provider: NANOGrav Collaboration
+    release_date: "2023-06-28"
+    priority: extended
+    scientific_roles: [nanohertz_gw_background, stochastic_background_comparison, pulsar_timing_validation]
+    landing_page: https://nanograv.org/science/data
+    documentation: [https://nanograv.org/news/15yrDataSet, https://zenodo.org/records/8104459]
+    license: See Zenodo record and included release files
+    citation: NANOGrav 15-year data-set and gravitational-wave-background papers
+    verified_on: "2026-07-28"
+    products:
+      - id: zenodo-record
+        title: Timing data, noise models, and reproduction software
+        role: [optional_pta_fit, published_background_comparison]
+        formats: [Zenodo_record, text, timing_model, software]
+        approximate_size: record-dependent
+        variable_inventory_complete: false
+        access: {method: zenodo, url: https://zenodo.org/records/8104459, instructions: Resolve an immutable record/version DOI and download only selected narrowband/wideband products and required software.}
+        variables:
+          - {name: pulse_time_of_arrival, symbol: TOA, unit: s, dimensions: T, coordinates: [pulsar, observation], resolution: observation cadence dependent, description: Pulsar timing measurements}
+          - {name: timing_residual, unit: s, dimensions: T, coordinates: [pulsar, observation], resolution: per observation, description: Residual relative to a timing model}
+
+  - id: wmap-nine-year
+    title: WMAP nine-year final release
+    provider: NASA / WMAP Science Team
+    release_date: "2012-2013"
+    priority: context_only
+    scientific_roles: [historical_cmb_benchmark, independent_pipeline_validation]
+    landing_page: https://lambda.gsfc.nasa.gov/product/wmap/current/index.html
+    documentation: [https://lambda.gsfc.nasa.gov/product/wmap/current/index.html]
+    license: NASA LAMBDA terms
+    citation: Bennett et al. 2013 and Hinshaw et al. 2013 as applicable
+    verified_on: "2026-07-28"
+    products:
+      - id: legacy-products
+        title: Final maps, spectra, likelihood, and chains
+        role: [historical_comparison, regression_validation]
+        formats: [FITS, HEALPix, likelihood_code, chain]
+        approximate_size: product-dependent
+        variable_inventory_complete: false
+        access: {method: html_index, url: https://lambda.gsfc.nasa.gov/product/wmap/current/index.html, instructions: Select only exact final nine-year products required for a declared historical comparison.}
+        variables:
+          - {name: cmb_angular_power_spectra, symbol: C_ell_XY, unit: microK^2 or release-declared, dimensions: Theta^2, coordinates: [ell, spectrum_type], resolution: WMAP nine-year multipole coverage, description: Legacy CMB spectra and likelihood inputs}

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jerrecode/stratified-cyclic-phase-cosmology/data/manifest/releases.schema.json",
+  "title": "SCPC Scientific Data Release Manifest",
+  "type": "object",
+  "required": ["manifest_version", "metadata", "conventions", "releases"],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": {"type": "string"},
+    "metadata": {
+      "type": "object",
+      "required": ["title", "updated", "scope"],
+      "properties": {
+        "title": {"type": "string"},
+        "updated": {"type": "string", "format": "date"},
+        "scope": {"type": "string"},
+        "maintainer": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "conventions": {"type": "object"},
+    "releases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/release"}
+    }
+  },
+  "$defs": {
+    "access": {
+      "type": "object",
+      "required": ["method", "url", "instructions"],
+      "properties": {
+        "method": {"enum": ["direct_http", "git", "html_index", "archive_query", "tap", "globus", "zenodo", "datafind", "manual"]},
+        "url": {"type": "string", "format": "uri"},
+        "ref": {"type": "string"},
+        "target_name": {"type": "string"},
+        "instructions": {"type": "string"},
+        "command_template": {"type": "string"},
+        "authentication": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "variable": {
+      "type": "object",
+      "required": ["name", "unit", "dimensions", "description"],
+      "properties": {
+        "name": {"type": "string"},
+        "symbol": {"type": "string"},
+        "unit": {"type": "string"},
+        "dimensions": {"type": "string"},
+        "coordinates": {"type": "array", "items": {"type": "string"}},
+        "resolution": {"type": "string"},
+        "description": {"type": "string"},
+        "relations": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "product": {
+      "type": "object",
+      "required": ["id", "title", "role", "formats", "access", "variables"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "title": {"type": "string"},
+        "role": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "formats": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "approximate_size": {"type": "string"},
+        "variable_inventory_complete": {"type": "boolean"},
+        "access": {"$ref": "#/$defs/access"},
+        "variables": {"type": "array", "items": {"$ref": "#/$defs/variable"}}
+      },
+      "additionalProperties": true
+    },
+    "release": {
+      "type": "object",
+      "required": ["id", "title", "provider", "release_date", "priority", "scientific_roles", "landing_page", "documentation", "license", "verified_on", "products"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "title": {"type": "string"},
+        "provider": {"type": "string"},
+        "release_date": {"type": "string"},
+        "priority": {"enum": ["core", "extended", "optional_large", "context_only"]},
+        "scientific_roles": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "landing_page": {"type": "string", "format": "uri"},
+        "documentation": {"type": "array", "items": {"type": "string", "format": "uri"}},
+        "license": {"type": "string"},
+        "citation": {"type": "string"},
+        "acknowledgement": {"type": "string"},
+        "verified_on": {"type": "string", "format": "date"},
+        "notes": {"type": "string"},
+        "products": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/product"}}
+      },
+      "additionalProperties": true
+    }
+  }
+}
