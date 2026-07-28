@@ -3,7 +3,7 @@ import numpy as np
 from scpc.models.phase import PeriodicPotential, SCPCParameters, SCPCSolution
 from scpc.numerics.cycles import (
     CycleReturnMetric,
-    classify_recurrence,
+    classify_return_sequences,
     cycle_return_metrics,
     turning_states,
     wrapped_phase_difference,
@@ -65,9 +65,14 @@ def _synthetic_solution(
     )
 
 
-def _return_metric(*, error: float, winding: int = 0) -> CycleReturnMetric:
+def _return_metric(
+    *,
+    error: float,
+    winding: int = 0,
+    kind: str = "bounce",
+) -> CycleReturnMetric:
     return CycleReturnMetric(
-        kind="bounce",
+        kind=kind,
         start_time=1.0,
         end_time=3.0,
         period=2.0,
@@ -89,12 +94,27 @@ def test_one_close_return_is_insufficient_for_positive_classification() -> None:
     assert len(metrics) == 1
     assert metrics[0].field_winding == 0
     assert metrics[0].maximum_error < 1.0e-12
-    assert classify_recurrence(metrics, tolerance=1.0e-9) == "insufficient_repeated_returns"
+    assert classify_return_sequences(metrics, tolerance=1.0e-9) == {
+        "bounce": "insufficient_repeated_returns"
+    }
 
 
 def test_two_close_returns_receive_only_a_return_sequence_summary() -> None:
     metrics = (_return_metric(error=1.0e-10), _return_metric(error=2.0e-10))
-    assert classify_recurrence(metrics, tolerance=1.0e-9) == "repeated_close_returns"
+    assert classify_return_sequences(metrics, tolerance=1.0e-9) == {
+        "bounce": "repeated_close_returns"
+    }
+
+
+def test_mixed_event_kinds_do_not_combine_return_counts() -> None:
+    metrics = (
+        _return_metric(error=1.0e-10, kind="bounce"),
+        _return_metric(error=1.0e-10, kind="turnaround"),
+    )
+    assert classify_return_sequences(metrics, tolerance=1.0e-9) == {
+        "bounce": "insufficient_repeated_returns",
+        "turnaround": "insufficient_repeated_returns",
+    }
 
 
 def test_real_field_shift_by_potential_period_is_not_a_close_return() -> None:
@@ -128,7 +148,9 @@ def test_full_circle_return_reports_winding_separately() -> None:
     assert metric.field_error < 1.0e-12
     assert metric.field_winding == 1
     repeated = (metric, metric)
-    assert classify_recurrence(repeated, tolerance=1.0e-9) == "repeated_close_winding_returns"
+    assert classify_return_sequences(repeated, tolerance=1.0e-9) == {
+        "bounce": "repeated_close_winding_returns"
+    }
 
 
 def test_exact_event_states_override_misleading_output_grid() -> None:
@@ -148,12 +170,13 @@ def test_event_states_are_serialized_with_coordinates() -> None:
 
 def test_decreasing_errors_above_tolerance_remain_unresolved() -> None:
     metrics = (_return_metric(error=9.5e-3), _return_metric(error=9.0e-3))
-    assert (
-        classify_recurrence(metrics, tolerance=1.0e-3)
-        == "return_errors_decreasing_but_unresolved"
-    )
+    assert classify_return_sequences(metrics, tolerance=1.0e-3) == {
+        "bounce": "return_errors_decreasing_but_unresolved"
+    }
 
 
 def test_large_repeated_return_errors_are_nonclosing() -> None:
     metrics = (_return_metric(error=0.1), _return_metric(error=0.2))
-    assert classify_recurrence(metrics, tolerance=1.0e-3) == "nonclosing_or_drifting_returns"
+    assert classify_return_sequences(metrics, tolerance=1.0e-3) == {
+        "bounce": "nonclosing_or_drifting_returns"
+    }
