@@ -26,7 +26,7 @@ from scpc.numerics.provenance import (
 )
 from scpc.scans.grid import ScanPoint, expand_parameter_grid
 from scpc.scans.outcomes import assess_solution
-from scpc.scans.records import RunRecord, completed_run_record, failed_run_record
+from scpc.scans.records import completed_run_record, failed_run_record
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
@@ -79,6 +79,16 @@ def _write_csv_atomic(path: Path, rows: list[dict[str, Any]]) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     temporary.replace(path)
+
+
+def _write_netcdf_atomic(dataset, path: Path) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    try:
+        dataset.to_netcdf(temporary, engine="scipy")
+        temporary.replace(path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _read_existing_rows(path: Path) -> list[dict[str, Any]]:
@@ -186,6 +196,7 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
             rows.remove(existing)
             rows_by_id.pop(point.identity.run_id)
 
+        trajectory_path: Path | None = None
         try:
             solution = _integrate_point(point)
             assessment = assess_solution(
@@ -194,7 +205,6 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
                 hubble_zero_tolerance=hubble_zero_tolerance,
                 return_tolerance=return_tolerance,
             )
-            trajectory_path: Path | None = None
             if (
                 assessment.numerically_valid
                 and assessment.outcome.value in retained_outcomes
@@ -202,19 +212,27 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
             ):
                 trajectories_dir.mkdir(parents=True, exist_ok=True)
                 trajectory_path = trajectories_dir / f"{point.identity.run_id}.nc"
-                solution.to_xarray().to_netcdf(trajectory_path, engine="scipy")
+                _write_netcdf_atomic(solution.to_xarray(), trajectory_path)
                 saved_trajectories += 1
             record = completed_run_record(
                 point.identity,
                 point.specification,
                 assessment,
                 solution,
+                coordinates=point.coordinates,
                 trajectory_path=(
                     trajectory_path.relative_to(output) if trajectory_path is not None else None
                 ),
             )
         except Exception as error:  # every planned run must remain represented
-            record = failed_run_record(point.identity, point.specification, error)
+            if trajectory_path is not None:
+                trajectory_path.unlink(missing_ok=True)
+            record = failed_run_record(
+                point.identity,
+                point.specification,
+                error,
+                coordinates=point.coordinates,
+            )
 
         row = record.to_flat_row()
         rows.append(row)
