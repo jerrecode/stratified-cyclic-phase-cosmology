@@ -7,6 +7,14 @@ on:
       - "src/**"
       - "configs/**"
       - "scripts/reproduce.py"
+      - "workflows/reproduce.yaml"
+  pull_request:
+    paths:
+      - "paper/**"
+      - "src/**"
+      - "configs/**"
+      - "scripts/reproduce.py"
+      - "workflows/reproduce.yaml"
 
 jobs:
   build:
@@ -16,14 +24,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -e .
-      - run: python scripts/reproduce.py
-      - uses: xu-cheng/latex-action@v3
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Reproduce paper products
+        run: python scripts/reproduce.py
+      - name: Build manuscript
+        uses: xu-cheng/latex-action@v3
         with:
           root_file: main.tex
           working_directory: paper
           latexmk_use_xelatex: false
-      - uses: actions/upload-artifact@v4
+      - name: Upload manuscript
+        uses: actions/upload-artifact@v4
         with:
           name: scpc-paper
           path: paper/main.pdf
