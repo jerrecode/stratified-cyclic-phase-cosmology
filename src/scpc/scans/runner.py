@@ -133,7 +133,10 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
 
     scan_path = Path(config_path).resolve()
     scan = _load_mapping(scan_path)
-    base_path = _resolve_relative(scan_path, scan["base_config"])
+    if scan.get("schema_version") != 1:
+        raise ValueError("Only scan schema_version 1 is supported")
+    base_reference = str(scan["base_config"])
+    base_path = _resolve_relative(scan_path, base_reference)
     base = _load_mapping(base_path)
     points = expand_parameter_grid(
         base,
@@ -151,9 +154,11 @@ def run_background_scan(config_path: str | Path, output_dir: str | Path) -> Path
 
     planned_hashes = [point.identity.sha256 for point in points]
     metadata = {
-        "scan_config": str(scan_path),
+        "metadata_schema_version": 1,
+        "scan_schema_version": 1,
+        "scan_config_reference": scan_path.name,
         "scan_config_sha256": sha256_file(scan_path),
-        "base_config": str(base_path),
+        "base_config_reference": base_reference,
         "base_config_sha256": sha256_file(base_path),
         "planned_run_sha256": planned_hashes,
     }
