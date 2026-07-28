@@ -1,0 +1,22 @@
+workflow_version: 1
+id: reproduce-scpc-bootstrap
+steps:
+  - id: install
+    command: python -m pip install -e '.[dev]'
+  - id: validate-data-manifest
+    command: scpc validate-manifest
+  - id: run-tests
+    command: pytest
+  - id: compare-models
+    command: scpc compare-models --config configs/model_comparisons.yaml --output results/model_comparison
+  - id: run-background
+    command: scpc run-background --config configs/scpc_baseline.yaml --output results/scpc_baseline
+  - id: build-paper
+    command: latexmk -pdf -cd paper/main.tex
+outputs:
+  - results/model_comparison/background_comparison.csv
+  - results/model_comparison/provenance.json
+  - results/scpc_baseline/trajectory.nc
+  - results/scpc_baseline/diagnostics.json
+  - results/scpc_baseline/provenance.json
+  - paper/main.pdf

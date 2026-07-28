@@ -1,20 +1,25 @@
-name: CI
+name: Scientific CI
+
 on:
   push:
   pull_request:
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: ruff check src tests scripts
+      - run: ruff check .
       - run: pytest --cov=scpc --cov-report=term-missing
       - run: scpc validate-manifest
-      - run: python scripts/reproduce.py
+      - run: scpc compare-models --config configs/model_comparisons.yaml --output results/ci-model-comparison
+      - run: scpc run-background --config configs/scpc_baseline.yaml --output results/ci-scpc-background
