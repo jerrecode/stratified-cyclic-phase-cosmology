@@ -97,6 +97,8 @@ def test_over_strict_verification_fails_and_records_output_checksum(tmp_path) ->
     assert exit_code == 2
     assert report["passed"] is False
     assert not all(report["checks"].values())
+    assert report["verification_config_sha256"] == sha256_file(verification_path)
+    assert report["baseline_config_sha256"] == sha256_file(baseline_path)
     assert provenance["outputs"] == [
         {
             "path": "verification.json",
