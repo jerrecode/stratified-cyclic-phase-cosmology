@@ -30,7 +30,14 @@ jobs:
           name: ruff-diagnostics
           path: ruff-report.txt
       - name: Run tests
-        run: pytest --cov=scpc --cov-report=term-missing
+        run: pytest --cov=scpc --cov-report=term-missing --junitxml=pytest-report.xml
+      - name: Upload pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          if-no-files-found: error
       - name: Validate data manifest
         run: scpc validate-manifest
       - name: Reproduce baseline products
@@ -40,14 +47,14 @@ jobs:
       - name: Run Stage 1 smoke scan
         run: scpc scan-background
       - name: Upload background verification
-        if: always()
+        if: always() && hashFiles('results/scpc_verification/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: scpc-background-verification
           path: results/scpc_verification
           if-no-files-found: error
       - name: Upload Stage 1 smoke scan
-        if: always()
+        if: always() && hashFiles('results/stage1_smoke_scan/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: scpc-stage1-smoke-scan
