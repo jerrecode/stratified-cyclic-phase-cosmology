@@ -1,9 +1,9 @@
-"""Diagnostics for recurrent background trajectories.
+"""Diagnostics for repeated turning-point returns.
 
 The routines in this module do not infer a cosmological cycle from a visually
 oscillatory curve. They compare states at repeated turning points and report
-explicit return errors. A low return error is only a candidate recurrence; it
-is not a perturbative-stability or attractor proof.
+explicit return errors. Even repeated close returns in one integration are not
+proof of recurrence, perturbative stability, or an attractor.
 """
 
 from __future__ import annotations
@@ -170,23 +170,27 @@ def classify_recurrence(
     *,
     tolerance: float = 1.0e-3,
 ) -> str:
-    """Classify background recurrence without claiming nonlinear stability."""
+    """Summarize one run's return sequence without claiming recurrence.
+
+    At least two return metrics, requiring at least three turning points of the
+    same kind, are required for a positive close-return summary. A recurrence
+    candidate additionally requires reproduction across solver tolerances and
+    independent methods, which is intentionally outside this function.
+    """
 
     if tolerance <= 0.0:
         raise ValueError("tolerance must be positive")
     if not metrics:
         return "insufficient_turning_points"
+    if len(metrics) < 2:
+        return "insufficient_repeated_returns"
 
     errors = np.asarray([metric.maximum_error for metric in metrics], dtype=float)
     if np.any(~np.isfinite(errors)):
         return "invalid_return_metric"
     has_winding = any(metric.field_winding != 0 for metric in metrics)
     if np.all(errors <= tolerance):
-        return "winding_recurrence_candidate" if has_winding else "recurrent_candidate"
-    if errors.size >= 2 and errors[-1] < errors[0] and errors[-1] <= 10.0 * tolerance:
-        return (
-            "converging_winding_recurrence_candidate"
-            if has_winding
-            else "converging_recurrence_candidate"
-        )
-    return "nonrecurrent_or_drifting"
+        return "repeated_close_winding_returns" if has_winding else "repeated_close_returns"
+    if np.all(np.diff(errors) < 0.0):
+        return "return_errors_decreasing_but_unresolved"
+    return "nonclosing_or_drifting_returns"
