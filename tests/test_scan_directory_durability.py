@@ -7,6 +7,32 @@ import scpc.scans.transactions as transactions
 from scpc.scans.errors import OutputSerializationError
 
 
+class _MinimalDataset:
+    def to_netcdf(self, path: Path, *, engine: str) -> None:
+        assert engine == "scipy"
+        Path(path).write_bytes(b"deterministic-netcdf-placeholder")
+
+
+def test_trajectory_syncs_file_before_directory(tmp_path, monkeypatch) -> None:
+    directory = tmp_path / "trajectories"
+    calls: list[str] = []
+    monkeypatch.setattr(transactions.os, "fsync", lambda descriptor: calls.append("file"))
+    monkeypatch.setattr(
+        transactions,
+        "fsync_directory",
+        lambda path: calls.append("directory"),
+    )
+
+    destination = transactions.write_content_addressed_netcdf(
+        _MinimalDataset(),
+        directory,
+        "scpc-test-run",
+    )
+
+    assert destination.is_file()
+    assert calls == ["file", "directory"]
+
+
 def test_termination_record_syncs_directory_before_return(tmp_path, monkeypatch) -> None:
     directory = tmp_path / "termination_records"
     calls: list[Path] = []

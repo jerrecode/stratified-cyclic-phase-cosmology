@@ -34,6 +34,8 @@ def write_content_addressed_netcdf(dataset: Any, directory: Path, run_id: str) -
     pending = directory / f".{run_id}.pending-{os.getpid()}.nc"
     try:
         dataset.to_netcdf(pending, engine="scipy")
+        with pending.open("rb") as handle:
+            os.fsync(handle.fileno())
         checksum = sha256_file(pending)
         destination = directory / f"{run_id}-{checksum[:20]}.nc"
         if destination.exists():
