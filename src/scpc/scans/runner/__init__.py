@@ -22,6 +22,7 @@ from scpc.numerics.provenance import (
     write_provenance,
 )
 from scpc.scans.config import DEFAULT_SCAN_SCHEMA, validate_scan_config
+from scpc.scans.errors import ResultIntegrityError
 from scpc.scans.event_evidence import unmatched_hubble_crossing_records
 from scpc.scans.fingerprint import implementation_runtime_fingerprint
 from scpc.scans.grid import ScanPoint, expand_parameter_grid
@@ -43,6 +44,13 @@ from scpc.visualization.scans import (
     plot_scan_outcome_map,
     validate_outcome_map_coordinates,
 )
+
+_TERMINATED_DURABLE_OUTCOMES = {
+    "physical_domain_termination",
+    "constraint_violation",
+    "degenerate_turning_event",
+    "unresolved_event_detection",
+}
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
@@ -210,6 +218,16 @@ def _requires_independent_termination_reintegration(row: dict[str, Any]) -> bool
     )
 
 
+def _validate_durable_terminated_outcome(solution, outcome: str) -> None:
+    if solution.termination_kind is None:
+        return
+    if outcome not in _TERMINATED_DURABLE_OUTCOMES:
+        raise ResultIntegrityError(
+            "Terminated solution produced an outcome that cannot be represented by "
+            f"the durable termination hierarchy: {outcome}"
+        )
+
+
 def run_background_scan(
     config_path: str | Path,
     output_dir: str | Path,
@@ -315,13 +333,16 @@ def run_background_scan(
                 hubble_zero_tolerance=hubble_zero_tolerance,
                 return_tolerance=return_tolerance,
             )
+            _validate_durable_terminated_outcome(solution, assessment.outcome.value)
             unmatched_crossings = unmatched_hubble_crossing_records(
                 solution,
                 hubble_zero_tolerance,
             )
             if solution.termination_kind is not None:
                 if solution.termination_state_vector is None:
-                    raise ValueError("Terminated solution is missing its exact state vector")
+                    raise ResultIntegrityError(
+                        "Terminated solution is missing its exact state vector"
+                    )
                 payload = termination_evidence_payload(
                     run_id=point.identity.run_id,
                     run_sha256=point.identity.sha256,
