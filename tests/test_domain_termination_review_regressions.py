@@ -123,6 +123,92 @@ def test_dense_termination_discards_later_solver_turning_event(monkeypatch) -> N
     assert assessment.outcome is OutcomeClass.PHYSICAL_DOMAIN_TERMINATION
 
 
+def test_roundoff_late_turning_event_is_clamped_to_dense_endpoint(monkeypatch) -> None:
+    late_turning_time = np.nextafter(0.5, np.inf)
+    parameters = SCPCParameters(
+        spatial_curvature_k=0,
+        rho_m_ref=0.0,
+        rho_r_ref=0.0,
+        potential=PeriodicPotential(offset=0.0, amplitude=0.0, strata_count=1),
+    )
+
+    def dense_solution(time):
+        values = np.asarray(time, dtype=float)
+        scale_factor = 1.0 + values
+        if values.ndim == 0:
+            return np.asarray([float(scale_factor), 0.0, 0.0, 0.0])
+        return np.vstack(
+            (
+                scale_factor,
+                np.zeros_like(values),
+                np.zeros_like(values),
+                np.zeros_like(values),
+            )
+        )
+
+    def fake_solve_ivp(*_args, **_kwargs):
+        return SimpleNamespace(
+            success=True,
+            message="success",
+            sol=dense_solution,
+            t=np.asarray([0.0, 1.0]),
+            t_events=[
+                np.asarray([late_turning_time]),
+                np.asarray([], dtype=float),
+            ],
+            y_events=[
+                np.asarray([[1.0 + late_turning_time, 0.0, 0.0, 0.0]]),
+                np.empty((0, 4), dtype=float),
+            ],
+            nfev=8,
+            status=0,
+        )
+
+    monkeypatch.setattr(phase_module, "solve_ivp", fake_solve_ivp)
+    solution = integrate_scpc(
+        parameters,
+        t_span=(0.0, 1.0),
+        samples=21,
+        a0=1.0,
+        phi0=0.0,
+        phi_dot0=0.0,
+        domain=SCPCIntegrationDomain(max_scale_factor=1.5),
+        max_step=1.0,
+        domain_check_substeps=16,
+    )
+
+    assert solution.termination_time == pytest.approx(0.5)
+    assert solution.turning_times.tolist() == [solution.t[-1]]
+    assessment = assess_solution(solution)
+    assert assessment.outcome is OutcomeClass.DEGENERATE_TURNING_EVENT
+
+
+def test_small_nearby_threshold_is_not_marked_coincident() -> None:
+    solution = integrate_scpc(
+        _de_sitter_parameters(),
+        t_span=(0.0, 1.0),
+        samples=17,
+        a0=1.0,
+        phi0=9.5e-7,
+        phi_dot0=0.0,
+        branch=-1,
+        rtol=1.0e-9,
+        atol=1.0e-11,
+        domain=SCPCIntegrationDomain(
+            min_scale_factor=0.8,
+            max_abs_field=1.0e-6,
+        ),
+        max_step=0.025,
+        domain_check_substeps=16,
+    )
+
+    assert tuple(item["kind"] for item in solution.termination_boundaries) == (
+        "minimum_scale_factor",
+    )
+    assessment = assess_solution(solution)
+    assert assessment.outcome is OutcomeClass.PHYSICAL_DOMAIN_TERMINATION
+
+
 def test_missing_nonprimary_coincident_boundary_is_integrity_error() -> None:
     solution = _coincident_flat_dust_solution()
     assert len(solution.termination_boundaries) == 2

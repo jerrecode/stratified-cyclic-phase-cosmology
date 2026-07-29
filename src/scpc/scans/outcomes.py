@@ -158,9 +158,11 @@ def _unmatched_sampled_crossings(
 
 
 def _event_tolerance(solution: SCPCSolution, scale: float) -> float:
-    rtol = float(solution.solver_metadata.get("solver_rtol", 1.0e-9))
-    atol = float(solution.solver_metadata.get("solver_atol", 1.0e-11))
-    return max(100.0 * atol, 1.0e-12) + max(100.0 * rtol, 1.0e-9) * max(1.0, scale)
+    rtol = abs(float(solution.solver_metadata.get("solver_rtol", 1.0e-9)))
+    atol = abs(float(solution.solver_metadata.get("solver_atol", 1.0e-11)))
+    magnitude = abs(float(scale))
+    roundoff = 64.0 * np.finfo(float).eps * max(magnitude, np.finfo(float).tiny)
+    return roundoff + 128.0 * (atol + rtol * magnitude)
 
 
 def _validate_boundary_record(
@@ -218,10 +220,7 @@ def _configured_coincident_boundaries(
         raise ResultIntegrityError("Integration-domain metadata is not valid JSON") from error
     if not isinstance(payload, dict):
         raise ResultIntegrityError("Integration-domain metadata must decode to a mapping")
-    if any(
-        value is not None and isinstance(value, bool)
-        for value in payload.values()
-    ):
+    if any(value is not None and isinstance(value, bool) for value in payload.values()):
         raise ResultIntegrityError("Integration-domain thresholds may not be boolean")
     try:
         domain = SCPCIntegrationDomain(**payload)

@@ -527,7 +527,9 @@ def _make_terminal_event(definition: _DomainEventDefinition):
 
 
 def _event_tolerance(rtol: float, atol: float, scale: float) -> float:
-    return max(100.0 * atol, 1.0e-12) + max(100.0 * rtol, 1.0e-9) * max(1.0, scale)
+    magnitude = abs(float(scale))
+    roundoff = 64.0 * np.finfo(float).eps * max(magnitude, np.finfo(float).tiny)
+    return roundoff + 128.0 * (abs(float(atol)) + abs(float(rtol)) * magnitude)
 
 
 def _first_dense_domain_exit(
@@ -758,7 +760,8 @@ def integrate_scpc(
         raise RuntimeError("Solver returned inconsistent turning-event state data")
     endpoint_slack = 64.0 * np.finfo(float).eps * max(1.0, abs(effective_end))
     keep = all_turning_times <= effective_end + endpoint_slack
-    event_times = all_turning_times[keep]
+    event_times = all_turning_times[keep].copy()
+    event_times[event_times > effective_end] = effective_end
     event_states = all_turning_states[keep]
 
     kinds: list[str] = []
