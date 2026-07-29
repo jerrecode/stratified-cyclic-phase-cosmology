@@ -134,7 +134,10 @@ def test_domain_scan_indexes_independent_exact_termination_evidence(tmp_path) ->
     assert row["termination_record_path"] in {item["path"] for item in provenance["outputs"]}
 
 
-def test_higher_priority_constraint_rejection_with_termination_resumes(tmp_path, monkeypatch) -> None:
+def test_higher_priority_constraint_rejection_with_termination_is_reintegrated(
+    tmp_path,
+    monkeypatch,
+) -> None:
     scan = _write_domain_protocol(tmp_path)
     output = tmp_path / "output"
     original_integration = runner._integrate_point
@@ -152,17 +155,21 @@ def test_higher_priority_constraint_rejection_with_termination_resumes(tmp_path,
     assert first_rows[0]["outcome"] == "constraint_violation"
     assert first_rows[0]["termination_kind"] == "minimum_scale_factor"
 
-    executed = False
+    executions = 0
 
-    def forbidden_integration(point):
-        nonlocal executed
-        executed = True
-        raise AssertionError(f"Unexpected integration of {point.identity.run_id}")
+    def counted_integration(point):
+        nonlocal executions
+        executions += 1
+        return constraint_violating_termination(point)
 
-    monkeypatch.setattr(runner, "_integrate_point", forbidden_integration)
+    monkeypatch.setattr(runner, "_integrate_point", counted_integration)
     resumed = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
     assert _rows(resumed) == first_rows
-    assert executed is False
+    assert executions == 1
+    provenance = json.loads((output / "provenance.json").read_text(encoding="utf-8"))
+    assert provenance["independently_reintegrated_termination_run_ids"] == [
+        first_rows[0]["run_id"]
+    ]
 
 
 @pytest.mark.parametrize(
@@ -263,6 +270,50 @@ def test_resume_recomputes_outcome_even_with_matching_forged_artifact(
     )
     with pytest.raises(ValueError, match="expected 'physical_domain_termination'"):
         runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+
+
+def test_resume_reintegrates_coherently_forged_constraint_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    scan = _write_domain_protocol(tmp_path)
+    output = tmp_path / "output"
+    index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    rows = _rows(index)
+    row = rows[0]
+    old_record = output / row["termination_record_path"]
+    payload = read_termination_record(old_record, row["termination_record_sha256"])
+
+    forged_maximum = 1.0e-3
+    row["outcome"] = "constraint_violation"
+    row["max_abs_constraint_residual"] = str(forged_maximum)
+    payload["classification"]["outcome"] = "constraint_violation"
+    payload["classification"]["max_abs_constraint_residual"] = forged_maximum.hex()
+    forged_record, forged_digest = write_content_addressed_termination_record(
+        payload,
+        output / "termination_records",
+        row["run_id"],
+    )
+    row["termination_record_path"] = str(forged_record.relative_to(output))
+    row["termination_record_sha256"] = forged_digest
+    _write_rows(index, rows)
+
+    original_integration = runner._integrate_point
+    executions = 0
+
+    def counted_integration(point):
+        nonlocal executions
+        executions += 1
+        return original_integration(point)
+
+    monkeypatch.setattr(runner, "_integrate_point", counted_integration)
+    resumed = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    refreshed = _rows(resumed)[0]
+    assert executions == 1
+    assert refreshed["outcome"] == "physical_domain_termination"
+    assert float(refreshed["max_abs_constraint_residual"]) < forged_maximum
+    provenance = json.loads((output / "provenance.json").read_text(encoding="utf-8"))
+    assert provenance["independently_reintegrated_termination_run_ids"] == [row["run_id"]]
 
 
 def test_resume_removes_unreferenced_termination_record(tmp_path) -> None:
