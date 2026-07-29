@@ -2,6 +2,8 @@ import csv
 import json
 from pathlib import Path
 
+import numpy as np
+import pytest
 import yaml
 
 import scpc.scans.runner as runner
@@ -96,6 +98,8 @@ def _assert_failed_row(output: Path, row: dict[str, str], failure_class: str, ex
     summary = json.loads((output / "scan_summary.json").read_text(encoding="utf-8"))
     assert summary["failure_class_counts"] == {failure_class: 1}
     assert summary["termination_record_count"] == 0
+    records = output / "termination_records"
+    assert not records.exists() or not list(records.glob("*.json"))
 
 
 def test_termination_evidence_io_failure_is_output_error(tmp_path, monkeypatch) -> None:
@@ -122,6 +126,56 @@ def test_malformed_postintegration_evidence_is_result_integrity_error(
         raise ResultIntegrityError("forced malformed in-memory termination evidence")
 
     monkeypatch.setattr(runner, "termination_evidence_payload", fail_evidence_construction)
+    index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    row = _single_row(index)
+    _assert_failed_row(output, row, "result_integrity_error", "ResultIntegrityError")
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["termination_time", "requested_end_time", "termination_state_component"],
+)
+def test_malformed_termination_scalars_are_integrity_failures(
+    tmp_path,
+    monkeypatch,
+    field,
+) -> None:
+    scan = _write_domain_protocol(tmp_path)
+    output = tmp_path / "output"
+    original_integration = runner._integrate_point
+
+    def malformed_solution(point):
+        solution = original_integration(point)
+        if field == "termination_time":
+            solution.termination_time = "not-a-time"
+        elif field == "requested_end_time":
+            solution.requested_end_time = "not-an-endpoint"
+        else:
+            state = np.asarray(solution.termination_state_vector, dtype=object)
+            state[1] = "not-a-hubble-value"
+            solution.termination_state_vector = state
+        return solution
+
+    monkeypatch.setattr(runner, "_integrate_point", malformed_solution)
+    index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    row = _single_row(index)
+    _assert_failed_row(output, row, "result_integrity_error", "ResultIntegrityError")
+
+
+def test_nonfinite_terminated_solution_does_not_create_durable_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    scan = _write_domain_protocol(tmp_path)
+    output = tmp_path / "output"
+    original_integration = runner._integrate_point
+
+    def nonfinite_solution(point):
+        solution = original_integration(point)
+        solution.H[-1] = np.nan
+        return solution
+
+    monkeypatch.setattr(runner, "_integrate_point", nonfinite_solution)
     index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
     row = _single_row(index)
     _assert_failed_row(output, row, "result_integrity_error", "ResultIntegrityError")
