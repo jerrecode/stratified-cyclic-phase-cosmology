@@ -275,6 +275,18 @@ def _configured_coincident_boundaries(
     return tuple(sorted(expected, key=lambda boundary: str(boundary["kind"])))
 
 
+def _validated_requested_end_time(solution: SCPCSolution) -> float | None:
+    if solution.requested_end_time is None:
+        return None
+    try:
+        requested_end_time = float(solution.requested_end_time)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Requested integration endpoint must be numeric") from error
+    if not np.isfinite(requested_end_time):
+        raise ResultIntegrityError("Requested integration endpoint must be finite")
+    return requested_end_time
+
+
 def _validate_termination_metadata(
     solution: SCPCSolution,
     arrays: tuple[np.ndarray, ...],
@@ -287,12 +299,19 @@ def _validate_termination_metadata(
         solution.termination_observed,
         solution.termination_units,
     )
+    requested_end_time = _validated_requested_end_time(solution)
     if kind is None:
         if any(value is not None for value in scalar_metadata) or solution.termination_boundaries:
             raise ResultIntegrityError(
                 "Nonterminated solution contains partial termination metadata"
             )
-        if not solution.completed_to_requested_end:
+        try:
+            completed_to_requested_end = solution.completed_to_requested_end
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ResultIntegrityError(
+                "Could not evaluate nonterminated endpoint completion"
+            ) from error
+        if not completed_to_requested_end:
             raise ResultIntegrityError(
                 "Integration ended before its requested endpoint without a declared termination"
             )
@@ -304,7 +323,7 @@ def _validate_termination_metadata(
         or solution.termination_threshold is None
         or solution.termination_observed is None
         or not solution.termination_units
-        or solution.requested_end_time is None
+        or requested_end_time is None
         or not solution.termination_boundaries
     ):
         raise ResultIntegrityError(
@@ -313,16 +332,13 @@ def _validate_termination_metadata(
 
     try:
         termination_time = float(solution.termination_time)
-        requested_end_time = float(solution.requested_end_time)
         state = np.asarray(solution.termination_state_vector, dtype=float)
     except (TypeError, ValueError, OverflowError) as error:
         raise ResultIntegrityError(
-            "Termination time, requested endpoint, and state must be numeric"
+            "Termination time and state must be numeric"
         ) from error
     if not np.isfinite(termination_time):
         raise ResultIntegrityError("Termination time must be finite")
-    if not np.isfinite(requested_end_time):
-        raise ResultIntegrityError("Requested end time must be finite")
     if state.shape != (4,) or np.any(~np.isfinite(state)):
         raise ResultIntegrityError("Termination state must be a finite vector with shape (4,)")
 
@@ -352,7 +368,11 @@ def _validate_termination_metadata(
     )
     if not np.allclose(final_state, state, rtol=1.0e-10, atol=1.0e-12):
         raise ResultIntegrityError("Exact termination state must equal the final stored state")
-    if solution.completed_to_requested_end:
+    try:
+        completed_to_requested_end = solution.completed_to_requested_end
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Could not evaluate terminated endpoint completion") from error
+    if completed_to_requested_end:
         raise ResultIntegrityError(
             "Domain-terminated solution cannot be marked complete to the requested endpoint"
         )
@@ -493,6 +513,25 @@ def assess_solution(
         raise ResultIntegrityError(
             "Turning-event times must lie inside the integrated interval"
         )
+
+    raw_turning_states = solution.turning_state_vectors
+    if raw_turning_states is None:
+        if turning_times.size:
+            raise ResultIntegrityError(
+                "Exact turning-state vectors are required for every recorded event"
+            )
+        turning_states = np.empty((0, 4), dtype=float)
+    else:
+        try:
+            turning_states = np.asarray(raw_turning_states, dtype=float)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ResultIntegrityError("Turning-state vectors must be numeric") from error
+    if turning_states.ndim != 2 or turning_states.shape != (turning_times.size, 4):
+        raise ResultIntegrityError(
+            "Turning-state vectors must have shape (number of events, 4)"
+        )
+    if np.any(~np.isfinite(turning_states)):
+        raise ResultIntegrityError("Turning-state vectors must be finite")
 
     constraint = arrays[-1]
     finite_constraint = constraint[np.isfinite(constraint)]
