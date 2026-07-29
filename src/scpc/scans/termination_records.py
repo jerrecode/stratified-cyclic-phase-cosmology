@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
+
+from scpc.scans.errors import OutputSerializationError, ResultIntegrityError
 
 
 def _finite_hex(value: Any, name: str) -> str:
@@ -66,7 +69,7 @@ def _canonical_boundaries(boundaries: Iterable[Mapping[str, Any]]) -> list[dict[
     return canonical
 
 
-def termination_evidence_payload(
+def _termination_evidence_payload_impl(
     *,
     run_id: str,
     run_sha256: str,
@@ -87,8 +90,6 @@ def termination_evidence_payload(
     solver_atol: Any,
     integration_domain: str,
 ) -> dict[str, Any]:
-    """Build the exact evidence payload shared by writing and resume validation."""
-
     if not run_id or not run_sha256 or not outcome:
         raise ValueError("Run identity and outcome fields must be nonempty")
     if not isinstance(numerically_valid, bool):
@@ -156,6 +157,58 @@ def termination_evidence_payload(
     }
 
 
+def termination_evidence_payload(
+    *,
+    run_id: str,
+    run_sha256: str,
+    outcome: str,
+    numerically_valid: bool,
+    max_abs_constraint_residual: Any,
+    bounce_count: int,
+    turnaround_count: int,
+    degenerate_count: int,
+    event_sequence: Sequence[str],
+    unmatched_hubble_crossings: Iterable[Mapping[str, Any]],
+    termination_time: Any,
+    termination_state_vector: Sequence[Any],
+    termination_constraint_residual: Any,
+    termination_boundaries: Iterable[Mapping[str, Any]],
+    requested_end_time: Any,
+    solver_rtol: Any,
+    solver_atol: Any,
+    integration_domain: str,
+) -> dict[str, Any]:
+    """Build exact evidence, classifying malformed in-memory results as integrity errors."""
+
+    try:
+        return _termination_evidence_payload_impl(
+            run_id=run_id,
+            run_sha256=run_sha256,
+            outcome=outcome,
+            numerically_valid=numerically_valid,
+            max_abs_constraint_residual=max_abs_constraint_residual,
+            bounce_count=bounce_count,
+            turnaround_count=turnaround_count,
+            degenerate_count=degenerate_count,
+            event_sequence=event_sequence,
+            unmatched_hubble_crossings=unmatched_hubble_crossings,
+            termination_time=termination_time,
+            termination_state_vector=termination_state_vector,
+            termination_constraint_residual=termination_constraint_residual,
+            termination_boundaries=termination_boundaries,
+            requested_end_time=requested_end_time,
+            solver_rtol=solver_rtol,
+            solver_atol=solver_atol,
+            integration_domain=integration_domain,
+        )
+    except ResultIntegrityError:
+        raise
+    except (KeyError, TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError(
+            f"Could not construct canonical termination evidence: {error}"
+        ) from error
+
+
 def canonical_evidence_bytes(payload: Mapping[str, Any]) -> bytes:
     return json.dumps(
         payload,
@@ -170,36 +223,53 @@ def evidence_sha256(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_evidence_bytes(payload)).hexdigest()
 
 
+def _remove_pending(path: Path) -> None:
+    with suppress(OSError):
+        path.unlink(missing_ok=True)
+
+
 def write_content_addressed_termination_record(
     payload: Mapping[str, Any],
     directory: Path,
     run_id: str,
 ) -> tuple[Path, str]:
-    """Atomically store canonical evidence under a content-addressed filename."""
+    """Atomically store canonical evidence or raise an output-serialization error."""
 
     safe_characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
     if not run_id or any(character not in safe_characters for character in run_id):
-        raise ValueError("run_id contains unsafe filename characters")
-    content = canonical_evidence_bytes(payload)
+        raise ResultIntegrityError("run_id contains unsafe filename characters")
+    try:
+        content = canonical_evidence_bytes(payload)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError(
+            f"Could not canonicalize termination evidence for {run_id}: {error}"
+        ) from error
     digest = hashlib.sha256(content).hexdigest()
-    directory.mkdir(parents=True, exist_ok=True)
     pending = directory / f".{run_id}.pending-{os.getpid()}.json"
     destination = directory / f"{run_id}-{digest[:20]}.json"
     try:
+        directory.mkdir(parents=True, exist_ok=True)
         with pending.open("wb") as handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
         if destination.exists():
             if destination.read_bytes() != content:
-                raise RuntimeError(f"Content-address collision for {destination.name}")
+                raise OutputSerializationError(
+                    f"Content-address collision for {destination.name}"
+                )
             pending.unlink()
         else:
             pending.replace(destination)
         return destination, digest
-    except Exception:
-        pending.unlink(missing_ok=True)
+    except OutputSerializationError:
+        _remove_pending(pending)
         raise
+    except Exception as error:
+        _remove_pending(pending)
+        raise OutputSerializationError(
+            f"Could not serialize termination evidence for {run_id}: {error}"
+        ) from error
 
 
 def read_termination_record(path: Path, expected_sha256: str) -> dict[str, Any]:
