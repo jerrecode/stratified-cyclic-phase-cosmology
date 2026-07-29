@@ -1,31 +1,33 @@
-"""Conservative outcome classification for homogeneous background trajectories.
-
-The classifier separates numerical invalidity, unresolved event detection, and
-physical trajectory morphology. It does not infer a spacetime singularity from
-a solver exception and does not label repeated turning points as a cyclic
-cosmology.
-"""
+"""Conservative outcome classification for homogeneous background trajectories."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 from enum import StrEnum
+from typing import Any
 
 import numpy as np
 
-from scpc.models.phase import SCPCSolution
+from scpc.models.phase import (
+    DOMAIN_TERMINATION_KINDS,
+    SCPCIntegrationDomain,
+    SCPCSolution,
+    evaluate_domain_boundary,
+)
 from scpc.numerics.cycles import classify_return_sequences, cycle_return_metrics
 from scpc.scans.errors import ResultIntegrityError
 
 
 class OutcomeClass(StrEnum):
-    """Mutually exclusive high-level classes for completed integrations."""
+    """Mutually exclusive high-level classes for returned integrations."""
 
     NONFINITE_STATE = "nonfinite_state"
     NONPOSITIVE_SCALE_FACTOR = "nonpositive_scale_factor"
     CONSTRAINT_VIOLATION = "constraint_violation"
     DEGENERATE_TURNING_EVENT = "degenerate_turning_event"
     UNRESOLVED_EVENT_DETECTION = "unresolved_event_detection"
+    PHYSICAL_DOMAIN_TERMINATION = "physical_domain_termination"
     MONOTONIC_EXPANSION = "monotonic_expansion"
     MONOTONIC_CONTRACTION = "monotonic_contraction"
     QUASI_STATIC_OR_AMBIGUOUS = "quasi_static_or_ambiguous"
@@ -45,11 +47,19 @@ RETAINABLE_OUTCOMES = (
     OutcomeClass.REPEATED_TURNING_POINTS,
 )
 
+_DOMAIN_FIELD_TO_KIND = {
+    "min_scale_factor": "minimum_scale_factor",
+    "max_scale_factor": "maximum_scale_factor",
+    "max_total_density": "maximum_total_density",
+    "max_abs_hubble": "maximum_absolute_hubble",
+    "max_abs_ricci_scalar": "maximum_absolute_ricci_scalar",
+    "max_abs_field": "maximum_absolute_field",
+    "max_abs_field_velocity": "maximum_absolute_field_velocity",
+}
+
 
 @dataclass(frozen=True)
 class OutcomeAssessment:
-    """Machine-readable summary of one successfully returned solution."""
-
     outcome: OutcomeClass
     reason: str
     numerically_valid: bool
@@ -69,18 +79,21 @@ class _SampledCrossing:
 
 
 def _state_arrays(solution: SCPCSolution) -> tuple[np.ndarray, ...]:
-    return (
-        np.asarray(solution.t, dtype=float),
-        np.asarray(solution.a, dtype=float),
-        np.asarray(solution.H, dtype=float),
-        np.asarray(solution.phi, dtype=float),
-        np.asarray(solution.phi_dot, dtype=float),
-        np.asarray(solution.rho_m, dtype=float),
-        np.asarray(solution.rho_r, dtype=float),
-        np.asarray(solution.rho_phi, dtype=float),
-        np.asarray(solution.p_phi, dtype=float),
-        np.asarray(solution.constraint_residual, dtype=float),
-    )
+    try:
+        return (
+            np.asarray(solution.t, dtype=float),
+            np.asarray(solution.a, dtype=float),
+            np.asarray(solution.H, dtype=float),
+            np.asarray(solution.phi, dtype=float),
+            np.asarray(solution.phi_dot, dtype=float),
+            np.asarray(solution.rho_m, dtype=float),
+            np.asarray(solution.rho_r, dtype=float),
+            np.asarray(solution.rho_phi, dtype=float),
+            np.asarray(solution.p_phi, dtype=float),
+            np.asarray(solution.constraint_residual, dtype=float),
+        )
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Stored trajectory arrays must contain numeric values") from error
 
 
 def _positive_finite(name: str, value: float) -> float:
@@ -117,14 +130,22 @@ def _unmatched_sampled_crossings(
     solution: SCPCSolution,
     tolerance: float,
 ) -> tuple[_SampledCrossing, ...]:
-    time = np.asarray(solution.t, dtype=float)
-    hubble = np.asarray(solution.H, dtype=float)
+    try:
+        time = np.asarray(solution.t, dtype=float)
+        hubble = np.asarray(solution.H, dtype=float)
+        recorded = [
+            (float(event_time), kind)
+            for event_time, kind in zip(
+                solution.turning_times,
+                solution.turning_kinds,
+                strict=True,
+            )
+            if kind in {"bounce", "turnaround"}
+        ]
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Turning-event evidence must contain numeric values") from error
+
     expected = _sampled_hubble_crossings(time, hubble, tolerance)
-    recorded = [
-        (float(event_time), kind)
-        for event_time, kind in zip(solution.turning_times, solution.turning_kinds, strict=True)
-        if kind in {"bounce", "turnaround"}
-    ]
     used: set[int] = set()
     unmatched: list[_SampledCrossing] = []
     scale = max(1.0, float(np.max(np.abs(time))))
@@ -145,6 +166,280 @@ def _unmatched_sampled_crossings(
         else:
             used.add(match)
     return tuple(unmatched)
+
+
+def _event_tolerance(solution: SCPCSolution, scale: float) -> float:
+    try:
+        rtol = abs(float(solution.solver_metadata.get("solver_rtol", 1.0e-9)))
+        atol = abs(float(solution.solver_metadata.get("solver_atol", 1.0e-11)))
+        magnitude = abs(float(scale))
+    except (AttributeError, TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Solver tolerance metadata must be numeric") from error
+    if not np.isfinite(rtol) or not np.isfinite(atol) or not np.isfinite(magnitude):
+        raise ResultIntegrityError("Solver tolerance metadata must be finite")
+    roundoff = 64.0 * np.finfo(float).eps * max(magnitude, np.finfo(float).tiny)
+    return roundoff + 128.0 * (atol + rtol * magnitude)
+
+
+def _validate_boundary_record(
+    boundary: dict[str, Any],
+    state: np.ndarray,
+    solution: SCPCSolution,
+) -> dict[str, Any]:
+    try:
+        kind = str(boundary["kind"])
+        threshold = float(boundary["threshold"])
+        recorded_observed = float(boundary["observed"])
+        units = str(boundary["units"])
+    except (KeyError, TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Termination boundary record is malformed") from error
+    if kind not in DOMAIN_TERMINATION_KINDS:
+        raise ResultIntegrityError(f"Unknown physical-domain termination kind: {kind}")
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ResultIntegrityError("Termination threshold must be finite and positive")
+    if not np.isfinite(recorded_observed) or recorded_observed <= 0.0:
+        raise ResultIntegrityError("Termination observed value must be finite and positive")
+    recomputed, expected_units = evaluate_domain_boundary(kind, state, solution.parameters)
+    tolerance = _event_tolerance(solution, max(abs(recomputed), abs(threshold)))
+    if units != expected_units:
+        raise ResultIntegrityError(
+            f"Termination units for {kind} are {units!r}, expected {expected_units!r}"
+        )
+    if abs(recorded_observed - recomputed) > tolerance:
+        raise ResultIntegrityError(
+            f"Recorded termination observable for {kind} disagrees with the final state"
+        )
+    if abs(recomputed - threshold) > tolerance:
+        raise ResultIntegrityError(
+            f"Termination state does not lie on the recorded {kind} threshold"
+        )
+    return {
+        "kind": kind,
+        "threshold": threshold,
+        "observed": recorded_observed,
+        "units": units,
+    }
+
+
+def _configured_coincident_boundaries(
+    solution: SCPCSolution,
+    state: np.ndarray,
+) -> tuple[dict[str, Any], ...]:
+    try:
+        raw_domain = solution.solver_metadata.get("integration_domain")
+    except AttributeError as error:
+        raise ResultIntegrityError("Terminated solution is missing solver metadata") from error
+    if not isinstance(raw_domain, str):
+        raise ResultIntegrityError(
+            "Terminated solution is missing serialized integration-domain metadata"
+        )
+    try:
+        payload = json.loads(raw_domain)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ResultIntegrityError("Integration-domain metadata is not valid JSON") from error
+    if not isinstance(payload, dict):
+        raise ResultIntegrityError("Integration-domain metadata must decode to a mapping")
+    if any(value is not None and isinstance(value, bool) for value in payload.values()):
+        raise ResultIntegrityError("Integration-domain thresholds may not be boolean")
+    try:
+        domain = SCPCIntegrationDomain(**payload)
+        domain.validate_for(solution.parameters)
+    except (TypeError, ValueError) as error:
+        raise ResultIntegrityError("Integration-domain metadata is invalid") from error
+    if not domain.configured:
+        raise ResultIntegrityError(
+            "Terminated solution has no configured integration-domain surfaces"
+        )
+
+    expected: list[dict[str, Any]] = []
+    for field, value in asdict(domain).items():
+        if value is None:
+            continue
+        kind = _DOMAIN_FIELD_TO_KIND[field]
+        threshold = float(value)
+        observed, units = evaluate_domain_boundary(kind, state, solution.parameters)
+        tolerance = _event_tolerance(solution, max(abs(observed), abs(threshold)))
+        if abs(observed - threshold) <= tolerance:
+            expected.append(
+                {
+                    "kind": kind,
+                    "threshold": threshold,
+                    "observed": observed,
+                    "units": units,
+                }
+            )
+    if not expected:
+        raise ResultIntegrityError(
+            "No configured integration-domain surface matches the exact terminal state"
+        )
+    return tuple(sorted(expected, key=lambda boundary: str(boundary["kind"])))
+
+
+def _validated_requested_end_time(solution: SCPCSolution) -> float | None:
+    if solution.requested_end_time is None:
+        return None
+    try:
+        requested_end_time = float(solution.requested_end_time)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Requested integration endpoint must be numeric") from error
+    if not np.isfinite(requested_end_time):
+        raise ResultIntegrityError("Requested integration endpoint must be finite")
+    return requested_end_time
+
+
+def _validate_termination_metadata(
+    solution: SCPCSolution,
+    arrays: tuple[np.ndarray, ...],
+) -> tuple[dict[str, Any], ...]:
+    kind = solution.termination_kind
+    scalar_metadata = (
+        solution.termination_time,
+        solution.termination_state_vector,
+        solution.termination_threshold,
+        solution.termination_observed,
+        solution.termination_units,
+    )
+    requested_end_time = _validated_requested_end_time(solution)
+    if kind is None:
+        if any(value is not None for value in scalar_metadata) or solution.termination_boundaries:
+            raise ResultIntegrityError(
+                "Nonterminated solution contains partial termination metadata"
+            )
+        try:
+            completed_to_requested_end = solution.completed_to_requested_end
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ResultIntegrityError(
+                "Could not evaluate nonterminated endpoint completion"
+            ) from error
+        if not completed_to_requested_end:
+            raise ResultIntegrityError(
+                "Integration ended before its requested endpoint without a declared termination"
+            )
+        return ()
+
+    if (
+        solution.termination_time is None
+        or solution.termination_state_vector is None
+        or solution.termination_threshold is None
+        or solution.termination_observed is None
+        or not solution.termination_units
+        or requested_end_time is None
+        or not solution.termination_boundaries
+    ):
+        raise ResultIntegrityError(
+            "Physical-domain termination requires complete scalar and boundary-set metadata"
+        )
+
+    try:
+        termination_time = float(solution.termination_time)
+        state = np.asarray(solution.termination_state_vector, dtype=float)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError(
+            "Termination time and state must be numeric"
+        ) from error
+    if not np.isfinite(termination_time):
+        raise ResultIntegrityError("Termination time must be finite")
+    if state.shape != (4,) or np.any(~np.isfinite(state)):
+        raise ResultIntegrityError("Termination state must be a finite vector with shape (4,)")
+
+    time = arrays[0]
+    interval_slack = 64.0 * np.finfo(float).eps * max(
+        1.0,
+        abs(float(time[0])),
+        abs(requested_end_time),
+        abs(termination_time),
+    )
+    lower = min(float(time[0]), requested_end_time) - interval_slack
+    upper = max(float(time[0]), requested_end_time) + interval_slack
+    if termination_time < lower or termination_time > upper:
+        raise ResultIntegrityError(
+            "Termination time lies outside the requested integration interval"
+        )
+
+    time_tolerance = _event_tolerance(
+        solution,
+        max(abs(termination_time), abs(float(time[-1]))),
+    )
+    if not np.isclose(time[-1], termination_time, rtol=0.0, atol=time_tolerance):
+        raise ResultIntegrityError("Exact termination time must be the final stored time")
+    final_state = np.asarray(
+        [arrays[1][-1], arrays[2][-1], arrays[3][-1], arrays[4][-1]],
+        dtype=float,
+    )
+    if not np.allclose(final_state, state, rtol=1.0e-10, atol=1.0e-12):
+        raise ResultIntegrityError("Exact termination state must equal the final stored state")
+    try:
+        completed_to_requested_end = solution.completed_to_requested_end
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Could not evaluate terminated endpoint completion") from error
+    if completed_to_requested_end:
+        raise ResultIntegrityError(
+            "Domain-terminated solution cannot be marked complete to the requested endpoint"
+        )
+
+    try:
+        validated = tuple(
+            _validate_boundary_record(dict(boundary), state, solution)
+            for boundary in solution.termination_boundaries
+        )
+    except (TypeError, ValueError) as error:
+        if isinstance(error, ResultIntegrityError):
+            raise
+        raise ResultIntegrityError("Termination boundary collection is malformed") from error
+    kinds = tuple(boundary["kind"] for boundary in validated)
+    if kinds != tuple(sorted(set(kinds))):
+        raise ResultIntegrityError(
+            "Termination boundary records must be unique and lexically ordered"
+        )
+
+    expected = _configured_coincident_boundaries(solution, state)
+    expected_kinds = tuple(boundary["kind"] for boundary in expected)
+    if kinds != expected_kinds:
+        raise ResultIntegrityError(
+            "Termination boundary set does not match configured coincident surfaces"
+        )
+    for supplied, configured in zip(validated, expected, strict=True):
+        tolerance = _event_tolerance(
+            solution,
+            max(abs(configured["observed"]), abs(configured["threshold"])),
+        )
+        if supplied["units"] != configured["units"]:
+            raise ResultIntegrityError(
+                f"Termination units for {supplied['kind']} do not match configured domain"
+            )
+        if abs(supplied["threshold"] - configured["threshold"]) > tolerance:
+            raise ResultIntegrityError(
+                f"Termination threshold for {supplied['kind']} does not match configured domain"
+            )
+
+    primary = validated[0]
+    try:
+        primary_threshold = float(solution.termination_threshold)
+        primary_observed = float(solution.termination_observed)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError(
+            "Primary termination threshold and observation must be numeric"
+        ) from error
+    if (
+        not np.isfinite(primary_threshold)
+        or primary_threshold <= 0.0
+        or not np.isfinite(primary_observed)
+        or primary_observed <= 0.0
+    ):
+        raise ResultIntegrityError(
+            "Primary termination threshold and observation must be finite and positive"
+        )
+    primary_tolerance = _event_tolerance(
+        solution,
+        max(abs(primary["observed"]), abs(primary["threshold"])),
+    )
+    if kind != primary["kind"] or solution.termination_units != primary["units"]:
+        raise ResultIntegrityError("Primary termination labels do not match the boundary set")
+    if abs(primary_threshold - primary["threshold"]) > primary_tolerance:
+        raise ResultIntegrityError("Primary termination threshold does not match the boundary set")
+    if abs(primary_observed - primary["observed"]) > primary_tolerance:
+        raise ResultIntegrityError("Primary termination observation does not match the boundary set")
+    return validated
 
 
 def _assessment(
@@ -176,7 +471,7 @@ def assess_solution(
     hubble_zero_tolerance: float = 1.0e-10,
     return_tolerance: float = 1.0e-3,
 ) -> OutcomeAssessment:
-    """Classify one completed integration without making a cyclicity claim."""
+    """Classify one returned integration without making a cyclicity claim."""
 
     constraint_threshold = _positive_finite("constraint_threshold", constraint_threshold)
     hubble_zero_tolerance = _positive_finite(
@@ -199,7 +494,10 @@ def assess_solution(
         raise ResultIntegrityError("Stored trajectory times must be strictly increasing")
 
     event_sequence = tuple(solution.turning_kinds)
-    turning_times = np.asarray(solution.turning_times, dtype=float)
+    try:
+        turning_times = np.asarray(solution.turning_times, dtype=float)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ResultIntegrityError("Turning-event times must be numeric") from error
     if turning_times.ndim != 1 or turning_times.size != len(event_sequence):
         raise ResultIntegrityError(
             "Turning times and event kinds must be one-dimensional and have equal lengths"
@@ -216,6 +514,25 @@ def assess_solution(
             "Turning-event times must lie inside the integrated interval"
         )
 
+    raw_turning_states = solution.turning_state_vectors
+    if raw_turning_states is None:
+        if turning_times.size:
+            raise ResultIntegrityError(
+                "Exact turning-state vectors are required for every recorded event"
+            )
+        turning_states = np.empty((0, 4), dtype=float)
+    else:
+        try:
+            turning_states = np.asarray(raw_turning_states, dtype=float)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ResultIntegrityError("Turning-state vectors must be numeric") from error
+    if turning_states.ndim != 2 or turning_states.shape != (turning_times.size, 4):
+        raise ResultIntegrityError(
+            "Turning-state vectors must have shape (number of events, 4)"
+        )
+    if np.any(~np.isfinite(turning_states)):
+        raise ResultIntegrityError("Turning-state vectors must be finite")
+
     constraint = arrays[-1]
     finite_constraint = constraint[np.isfinite(constraint)]
     max_constraint = (
@@ -223,6 +540,10 @@ def assess_solution(
     )
 
     if any(np.any(~np.isfinite(array)) for array in arrays):
+        if solution.termination_kind is not None:
+            raise ResultIntegrityError(
+                "Terminated solution contains nonfinite trajectory or constraint data"
+            )
         return _assessment(
             outcome=OutcomeClass.NONFINITE_STATE,
             reason="At least one stored state, density, time, or constraint value is nonfinite.",
@@ -231,7 +552,13 @@ def assess_solution(
             max_constraint=max_constraint,
         )
 
+    termination_boundaries = _validate_termination_metadata(solution, arrays)
+
     if np.any(arrays[1] <= 0.0):
+        if termination_boundaries:
+            raise ResultIntegrityError(
+                "Terminated solution contains a nonpositive scale factor"
+            )
         return _assessment(
             outcome=OutcomeClass.NONPOSITIVE_SCALE_FACTOR,
             reason="The stored trajectory contains a nonpositive scale factor.",
@@ -283,6 +610,22 @@ def assess_solution(
         return_metrics,
         tolerance=return_tolerance,
     )
+
+    if termination_boundaries:
+        kinds = ", ".join(boundary["kind"] for boundary in termination_boundaries)
+        return _assessment(
+            outcome=OutcomeClass.PHYSICAL_DOMAIN_TERMINATION,
+            reason=(
+                f"Integration reached declared domain boundary set [{kinds}] at "
+                f"t={float(solution.termination_time):.6g}. This is an analysis boundary, "
+                "not a spacetime singularity claim."
+            ),
+            numerically_valid=False,
+            event_sequence=event_sequence,
+            max_constraint=max_constraint,
+            return_classifications=return_classifications,
+        )
+
     bounce_count = event_sequence.count("bounce")
     turnaround_count = event_sequence.count("turnaround")
     hubble = arrays[2]

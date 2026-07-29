@@ -1,0 +1,19 @@
+schema_version: 1
+description: Exact minimum-scale-factor termination example with two declared thresholds.
+base_config: stage1_domain_example_base.yaml
+identity_namespace: scpc-domain-example-v1
+max_runs: 2
+resume: true
+rerun_statuses: []
+axes:
+  run.domain.min_scale_factor: [0.9, 0.8]
+classification:
+  constraint_threshold: 1.0e-7
+  hubble_zero_tolerance: 1.0e-10
+  return_tolerance: 1.0e-3
+retention:
+  outcomes: []
+  max_trajectories: 0
+notes:
+  - Both runs terminate at a declared root-localized analysis boundary.
+  - The results are rejected for full-interval morphology and are not singularity claims.
