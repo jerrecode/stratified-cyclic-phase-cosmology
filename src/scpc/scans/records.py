@@ -52,6 +52,7 @@ class RunRecord:
     completed_to_requested_end: bool | None = None
     termination_kind: str | None = None
     termination_time: float | None = None
+    termination_state_vector: tuple[float, ...] | None = None
     termination_threshold: float | None = None
     termination_observed: float | None = None
     termination_units: str | None = None
@@ -64,6 +65,11 @@ class RunRecord:
         mapping["status"] = self.status.value
         mapping["failure_class"] = self.failure_class.value if self.failure_class else None
         mapping["event_sequence"] = list(self.event_sequence)
+        mapping["termination_state_vector"] = (
+            list(self.termination_state_vector)
+            if self.termination_state_vector is not None
+            else None
+        )
         mapping["termination_boundaries"] = [dict(item) for item in self.termination_boundaries]
         return mapping
 
@@ -74,6 +80,7 @@ class RunRecord:
             "specification",
             "event_sequence",
             "return_sequence_classifications",
+            "termination_state_vector",
             "termination_boundaries",
             "solver_metadata",
         ):
@@ -96,6 +103,11 @@ def completed_run_record(
     trajectory_path: str | Path | None = None,
 ) -> RunRecord:
     status = RunStatus.COMPLETED if assessment.numerically_valid else RunStatus.REJECTED
+    termination_state = (
+        tuple(float(value) for value in solution.termination_state_vector)
+        if solution.termination_state_vector is not None
+        else None
+    )
     return RunRecord(
         run_id=identity.run_id,
         run_sha256=identity.sha256,
@@ -116,6 +128,7 @@ def completed_run_record(
         termination_time=(
             float(solution.termination_time) if solution.termination_time is not None else None
         ),
+        termination_state_vector=termination_state,
         termination_threshold=(
             float(solution.termination_threshold)
             if solution.termination_threshold is not None

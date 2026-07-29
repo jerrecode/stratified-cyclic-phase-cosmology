@@ -236,6 +236,24 @@ def test_undeclared_boundary_substitution_is_integrity_error() -> None:
         assess_solution(solution)
 
 
+@pytest.mark.parametrize("field", ["termination_threshold", "termination_observed"])
+def test_nan_primary_termination_scalar_is_integrity_error(field) -> None:
+    solution = _contracting_de_sitter_solution()
+    setattr(solution, field, float("nan"))
+
+    with pytest.raises(ResultIntegrityError, match="finite and positive"):
+        assess_solution(solution)
+
+
+def test_termination_time_outside_requested_interval_is_integrity_error() -> None:
+    solution = _contracting_de_sitter_solution()
+    solution.t[-1] = 1.1
+    solution.termination_time = 1.1
+
+    with pytest.raises(ResultIntegrityError, match="outside the requested integration interval"):
+        assess_solution(solution)
+
+
 @pytest.mark.parametrize("metadata", [None, "{not-json", "{}"])
 def test_terminated_solution_requires_valid_configured_domain_metadata(metadata) -> None:
     solution = _contracting_de_sitter_solution()

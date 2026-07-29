@@ -293,13 +293,29 @@ def _validate_termination_metadata(
         )
 
     termination_time = float(solution.termination_time)
+    requested_end_time = float(solution.requested_end_time)
     state = np.asarray(solution.termination_state_vector, dtype=float)
     if not np.isfinite(termination_time):
         raise ResultIntegrityError("Termination time must be finite")
+    if not np.isfinite(requested_end_time):
+        raise ResultIntegrityError("Requested end time must be finite")
     if state.shape != (4,) or np.any(~np.isfinite(state)):
         raise ResultIntegrityError("Termination state must be a finite vector with shape (4,)")
 
     time = arrays[0]
+    interval_slack = 64.0 * np.finfo(float).eps * max(
+        1.0,
+        abs(float(time[0])),
+        abs(requested_end_time),
+        abs(termination_time),
+    )
+    lower = min(float(time[0]), requested_end_time) - interval_slack
+    upper = max(float(time[0]), requested_end_time) + interval_slack
+    if termination_time < lower or termination_time > upper:
+        raise ResultIntegrityError(
+            "Termination time lies outside the requested integration interval"
+        )
+
     time_tolerance = _event_tolerance(solution, max(abs(termination_time), abs(float(time[-1]))))
     if not np.isclose(time[-1], termination_time, rtol=0.0, atol=time_tolerance):
         raise ResultIntegrityError("Exact termination time must be the final stored time")
@@ -342,15 +358,26 @@ def _validate_termination_metadata(
             )
 
     primary = validated[0]
+    primary_threshold = float(solution.termination_threshold)
+    primary_observed = float(solution.termination_observed)
+    if (
+        not np.isfinite(primary_threshold)
+        or primary_threshold <= 0.0
+        or not np.isfinite(primary_observed)
+        or primary_observed <= 0.0
+    ):
+        raise ResultIntegrityError(
+            "Primary termination threshold and observation must be finite and positive"
+        )
     primary_tolerance = _event_tolerance(
         solution,
         max(abs(primary["observed"]), abs(primary["threshold"])),
     )
     if kind != primary["kind"] or solution.termination_units != primary["units"]:
         raise ResultIntegrityError("Primary termination labels do not match the boundary set")
-    if abs(float(solution.termination_threshold) - primary["threshold"]) > primary_tolerance:
+    if abs(primary_threshold - primary["threshold"]) > primary_tolerance:
         raise ResultIntegrityError("Primary termination threshold does not match the boundary set")
-    if abs(float(solution.termination_observed) - primary["observed"]) > primary_tolerance:
+    if abs(primary_observed - primary["observed"]) > primary_tolerance:
         raise ResultIntegrityError("Primary termination observation does not match the boundary set")
     return validated
 
