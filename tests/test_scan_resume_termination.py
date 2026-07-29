@@ -2,6 +2,7 @@ import csv
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 
@@ -90,6 +91,20 @@ def _write_rows(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+def _recompute_constraint(solution) -> float:
+    a = float(solution.a[-1])
+    hubble = float(solution.H[-1])
+    field = float(solution.phi[-1])
+    field_velocity = float(solution.phi_dot[-1])
+    parameters = solution.parameters
+    matter = float(parameters.matter_density(a))
+    radiation = float(parameters.radiation_density(a))
+    field_density = 0.5 * field_velocity**2 + float(parameters.potential.value(field))
+    lhs = hubble**2 + parameters.spatial_curvature_k / a**2
+    rhs = (matter + radiation + field_density) / 3.0
+    return float((lhs - rhs) / max(abs(rhs), 1.0e-15))
+
+
 def test_domain_scan_indexes_exact_termination_state(tmp_path) -> None:
     scan = _write_domain_protocol(tmp_path)
     index = runner.run_background_scan(scan, tmp_path / "output", schema_path=SCAN_SCHEMA)
@@ -100,7 +115,39 @@ def test_domain_scan_indexes_exact_termination_state(tmp_path) -> None:
     state = json.loads(row["termination_state_vector"])
     assert len(state) == 4
     assert state[0] == pytest.approx(0.8)
+    assert np.isfinite(float(row["termination_constraint_residual"]))
     assert json.loads(row["termination_boundaries"])[0]["kind"] == "minimum_scale_factor"
+
+
+def test_higher_priority_constraint_rejection_with_termination_resumes(tmp_path, monkeypatch) -> None:
+    scan = _write_domain_protocol(tmp_path)
+    output = tmp_path / "output"
+    original_integration = runner._integrate_point
+
+    def constraint_violating_termination(point):
+        solution = original_integration(point)
+        solution.H[-1] += 0.01
+        solution.termination_state_vector[1] = solution.H[-1]
+        solution.constraint_residual[-1] = _recompute_constraint(solution)
+        return solution
+
+    monkeypatch.setattr(runner, "_integrate_point", constraint_violating_termination)
+    index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    first_rows = _rows(index)
+    assert first_rows[0]["outcome"] == "constraint_violation"
+    assert first_rows[0]["termination_kind"] == "minimum_scale_factor"
+
+    executed = False
+
+    def forbidden_integration(point):
+        nonlocal executed
+        executed = True
+        raise AssertionError(f"Unexpected integration of {point.identity.run_id}")
+
+    monkeypatch.setattr(runner, "_integrate_point", forbidden_integration)
+    resumed = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    assert _rows(resumed) == first_rows
+    assert executed is False
 
 
 @pytest.mark.parametrize(
@@ -109,6 +156,7 @@ def test_domain_scan_indexes_exact_termination_state(tmp_path) -> None:
         "primary_kind",
         "boundary_set",
         "state_vector",
+        "state_hubble",
         "primary_nan",
         "outcome",
     ],
@@ -132,6 +180,10 @@ def test_resume_rejects_corrupted_termination_record_before_execution(
         state = json.loads(row["termination_state_vector"])
         state[0] += 0.05
         row["termination_state_vector"] = json.dumps(state)
+    elif mutation == "state_hubble":
+        state = json.loads(row["termination_state_vector"])
+        state[1] += 0.25
+        row["termination_state_vector"] = json.dumps(state)
     elif mutation == "primary_nan":
         row["termination_threshold"] = "nan"
     elif mutation == "outcome":
@@ -148,6 +200,9 @@ def test_resume_rejects_corrupted_termination_record_before_execution(
         raise AssertionError(f"Unexpected integration of {point.identity.run_id}")
 
     monkeypatch.setattr(runner, "_integrate_point", forbidden_integration)
-    with pytest.raises(ValueError, match="(?i)terminated|termination|domain|outcome"):
+    with pytest.raises(
+        ValueError,
+        match="(?i)terminated|termination|domain|outcome|constraint",
+    ):
         runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
     assert executed is False

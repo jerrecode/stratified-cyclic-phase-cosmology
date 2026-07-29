@@ -30,6 +30,12 @@ _DOMAIN_FIELD_TO_KIND = {
     "max_abs_field": "maximum_absolute_field",
     "max_abs_field_velocity": "maximum_absolute_field_velocity",
 }
+_TERMINATED_REJECTION_OUTCOMES = {
+    "physical_domain_termination",
+    "constraint_violation",
+    "degenerate_turning_event",
+    "unresolved_event_detection",
+}
 
 
 def _trajectory_file(output: Path, raw_path: str) -> Path:
@@ -102,6 +108,17 @@ def _canonical_domain(domain: SCPCIntegrationDomain | None) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def _constraint_residual(state: np.ndarray, parameters: SCPCParameters) -> float:
+    a, hubble, field, field_velocity = (float(value) for value in state)
+    matter = float(parameters.matter_density(a))
+    radiation = float(parameters.radiation_density(a))
+    field_density = 0.5 * field_velocity**2 + float(parameters.potential.value(field))
+    lhs = hubble**2 + parameters.spatial_curvature_k / a**2
+    rhs = (matter + radiation + field_density) / 3.0
+    scale = max(abs(rhs), 1.0e-15)
+    return float((lhs - rhs) / scale)
 
 
 def _expected_boundaries(
@@ -193,6 +210,7 @@ def _validate_termination_row(row: dict[str, Any], point: ScanPoint) -> None:
     scalar_keys = (
         "termination_kind",
         "termination_time",
+        "termination_constraint_residual",
         "termination_threshold",
         "termination_observed",
         "termination_units",
@@ -211,8 +229,10 @@ def _validate_termination_row(row: dict[str, Any], point: ScanPoint) -> None:
 
     if row.get("status") != "rejected":
         raise ValueError(f"Domain-terminated existing row {run_id} must be rejected")
-    if row.get("outcome") != "physical_domain_termination":
-        raise ValueError(f"Domain-terminated existing row {run_id} has inconsistent outcome")
+    if row.get("outcome") not in _TERMINATED_REJECTION_OUTCOMES:
+        raise ValueError(
+            f"Terminated existing row {run_id} has incompatible rejection outcome"
+        )
     if _boolean_field(row, "numerically_valid", run_id) is not False:
         raise ValueError(f"Domain-terminated existing row {run_id} must be numerically invalid")
     if _boolean_field(row, "completed_to_requested_end", run_id) is not False:
@@ -232,6 +252,11 @@ def _validate_termination_row(row: dict[str, Any], point: ScanPoint) -> None:
         raise ValueError(f"Nonfinite termination state in existing row {run_id}")
 
     termination_time = _finite_float(row, "termination_time", run_id)
+    termination_constraint = _finite_float(
+        row,
+        "termination_constraint_residual",
+        run_id,
+    )
     primary_threshold = _finite_float(row, "termination_threshold", run_id, positive=True)
     primary_observed = _finite_float(row, "termination_observed", run_id, positive=True)
     primary_kind = row.get("termination_kind", "")
@@ -288,6 +313,20 @@ def _validate_termination_row(row: dict[str, Any], point: ScanPoint) -> None:
     time_tolerance = _domain_tolerance(rtol, atol, max(abs(reached_end), abs(termination_time)))
     if abs(reached_end - termination_time) > time_tolerance:
         raise ValueError(f"Reached endpoint mismatch in existing row {run_id}")
+
+    recomputed_constraint = _constraint_residual(state, parameters)
+    constraint_tolerance = _domain_tolerance(
+        rtol,
+        atol,
+        max(abs(recomputed_constraint), abs(termination_constraint)),
+    )
+    if abs(recomputed_constraint - termination_constraint) > constraint_tolerance:
+        raise ValueError(f"Termination constraint residual mismatch in existing row {run_id}")
+    max_constraint = _finite_float(row, "max_abs_constraint_residual", run_id)
+    if max_constraint < 0.0:
+        raise ValueError(f"Negative maximum constraint residual in existing row {run_id}")
+    if abs(recomputed_constraint) > max_constraint + constraint_tolerance:
+        raise ValueError(f"Terminal constraint exceeds durable maximum in existing row {run_id}")
 
     supplied = _validated_supplied_boundaries(
         boundaries_raw,

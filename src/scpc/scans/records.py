@@ -53,6 +53,7 @@ class RunRecord:
     termination_kind: str | None = None
     termination_time: float | None = None
     termination_state_vector: tuple[float, ...] | None = None
+    termination_constraint_residual: float | None = None
     termination_threshold: float | None = None
     termination_observed: float | None = None
     termination_units: str | None = None
@@ -108,6 +109,9 @@ def completed_run_record(
         if solution.termination_state_vector is not None
         else None
     )
+    termination_constraint = (
+        float(solution.constraint_residual[-1]) if termination_state is not None else None
+    )
     return RunRecord(
         run_id=identity.run_id,
         run_sha256=identity.sha256,
@@ -129,6 +133,7 @@ def completed_run_record(
             float(solution.termination_time) if solution.termination_time is not None else None
         ),
         termination_state_vector=termination_state,
+        termination_constraint_residual=termination_constraint,
         termination_threshold=(
             float(solution.termination_threshold)
             if solution.termination_threshold is not None
