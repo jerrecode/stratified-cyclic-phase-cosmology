@@ -192,6 +192,24 @@ def _strict_fingerprint() -> tuple[dict[str, Any], dict[str, Any]]:
     return metadata, complete
 
 
+def _requires_independent_termination_reintegration(row: dict[str, Any]) -> bool:
+    """Return whether a persisted termination must be recomputed before reuse.
+
+    A content-addressed local artifact detects accidental independent corruption,
+    but it is not an adversarial signature when the index and artifact are both
+    writable. Re-integrating the immutable specification supplies the independent
+    trajectory-wide evidence required to accept the stored classification.
+    """
+
+    raw_boundaries = str(row.get("termination_boundaries", ""))
+    has_boundaries = bool(raw_boundaries and raw_boundaries not in {"[]", "null"})
+    return bool(
+        row.get("termination_kind")
+        or row.get("termination_record_path")
+        or has_boundaries
+    )
+
+
 def run_background_scan(
     config_path: str | Path,
     output_dir: str | Path,
@@ -263,6 +281,7 @@ def run_background_scan(
     )
     removed_recovery_files = cleanup_unreferenced_transaction_files(output, rows)
     rerun_statuses = set(str(status) for status in scan.get("rerun_statuses", []))
+    independently_reintegrated_termination_run_ids: list[str] = []
 
     retention = scan.get("retention", {})
     retained_outcomes = set(str(value) for value in retention.get("outcomes", []))
@@ -270,8 +289,18 @@ def run_background_scan(
 
     for point in points:
         old_row = rows_by_id.get(point.identity.run_id)
-        if old_row is not None and old_row["status"] not in rerun_statuses:
+        requires_reintegration = bool(
+            old_row is not None
+            and _requires_independent_termination_reintegration(old_row)
+        )
+        if (
+            old_row is not None
+            and old_row["status"] not in rerun_statuses
+            and not requires_reintegration
+        ):
             continue
+        if requires_reintegration:
+            independently_reintegrated_termination_run_ids.append(point.identity.run_id)
 
         old_has_trajectory = bool(old_row and old_row.get("trajectory_path"))
         effective_saved_trajectories = saved_trajectories - int(old_has_trajectory)
@@ -398,6 +427,9 @@ def run_background_scan(
             "base_config_sha256": sha256_file(base_path),
             "implementation_runtime_fingerprint": complete_fingerprint,
             "recovered_unreferenced_files": removed_recovery_files,
+            "independently_reintegrated_termination_run_ids": sorted(
+                independently_reintegrated_termination_run_ids
+            ),
         },
     )
     provenance["outputs"] = build_output_inventory(output_files, relative_to=output)
