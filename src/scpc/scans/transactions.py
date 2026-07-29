@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from scpc.numerics.provenance import sha256_file
+from scpc.scans.durability import fsync_directory
 from scpc.scans.errors import OutputSerializationError
 
 
@@ -43,6 +44,7 @@ def write_content_addressed_netcdf(dataset: Any, directory: Path, run_id: str) -
             pending.unlink()
         else:
             pending.replace(destination)
+        fsync_directory(directory)
         return destination
     except OutputSerializationError:
         pending.unlink(missing_ok=True)
@@ -74,13 +76,22 @@ def replace_index_row_atomic(
         raise ValueError("All scan-index rows must have identical ordered fields")
 
     temporary = index_path.with_suffix(index_path.suffix + ".tmp")
-    with temporary.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(committed)
-        handle.flush()
-        os.fsync(handle.fileno())
-    temporary.replace(index_path)
+    try:
+        with temporary.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(committed)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(index_path)
+        fsync_directory(index_path.parent)
+    except Exception as error:
+        temporary.unlink(missing_ok=True)
+        if isinstance(error, OutputSerializationError):
+            raise
+        raise OutputSerializationError(
+            f"Could not durably replace scan index {index_path}: {error}"
+        ) from error
     return committed
 
 

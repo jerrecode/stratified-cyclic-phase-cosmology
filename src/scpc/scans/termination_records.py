@@ -11,6 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
+from scpc.scans.durability import fsync_directory
 from scpc.scans.errors import OutputSerializationError, ResultIntegrityError
 
 
@@ -261,6 +262,7 @@ def write_content_addressed_termination_record(
             pending.unlink()
         else:
             pending.replace(destination)
+        fsync_directory(directory)
         return destination, digest
     except OutputSerializationError:
         _remove_pending(pending)
