@@ -148,6 +148,6 @@ def test_resume_rejects_corrupted_termination_record_before_execution(
         raise AssertionError(f"Unexpected integration of {point.identity.run_id}")
 
     monkeypatch.setattr(runner, "_integrate_point", forbidden_integration)
-    with pytest.raises(ValueError, match="(?i)termination|domain|outcome"):
+    with pytest.raises(ValueError, match="(?i)terminated|termination|domain|outcome"):
         runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
     assert executed is False
