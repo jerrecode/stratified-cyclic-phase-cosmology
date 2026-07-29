@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import json
 from pathlib import Path
 
@@ -7,6 +8,10 @@ import pytest
 import yaml
 
 import scpc.scans.runner as runner
+from scpc.scans.termination_records import (
+    read_termination_record,
+    write_content_addressed_termination_record,
+)
 
 
 SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
@@ -105,9 +110,10 @@ def _recompute_constraint(solution) -> float:
     return float((lhs - rhs) / max(abs(rhs), 1.0e-15))
 
 
-def test_domain_scan_indexes_exact_termination_state(tmp_path) -> None:
+def test_domain_scan_indexes_independent_exact_termination_evidence(tmp_path) -> None:
     scan = _write_domain_protocol(tmp_path)
-    index = runner.run_background_scan(scan, tmp_path / "output", schema_path=SCAN_SCHEMA)
+    output = tmp_path / "output"
+    index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
     row = _rows(index)[0]
 
     assert row["status"] == "rejected"
@@ -117,6 +123,15 @@ def test_domain_scan_indexes_exact_termination_state(tmp_path) -> None:
     assert state[0] == pytest.approx(0.8)
     assert np.isfinite(float(row["termination_constraint_residual"]))
     assert json.loads(row["termination_boundaries"])[0]["kind"] == "minimum_scale_factor"
+    record = output / row["termination_record_path"]
+    assert record.is_file()
+    assert hashlib.sha256(record.read_bytes()).hexdigest() == row["termination_record_sha256"]
+    payload = read_termination_record(record, row["termination_record_sha256"])
+    assert payload["termination"]["state"][1] == float(state[1]).hex()
+    summary = json.loads((output / "scan_summary.json").read_text(encoding="utf-8"))
+    assert summary["termination_record_count"] == 1
+    provenance = json.loads((output / "provenance.json").read_text(encoding="utf-8"))
+    assert row["termination_record_path"] in {item["path"] for item in provenance["outputs"]}
 
 
 def test_higher_priority_constraint_rejection_with_termination_resumes(tmp_path, monkeypatch) -> None:
@@ -156,9 +171,11 @@ def test_higher_priority_constraint_rejection_with_termination_resumes(tmp_path,
         "primary_kind",
         "boundary_set",
         "state_vector",
-        "state_hubble",
+        "state_hubble_sign",
         "primary_nan",
         "outcome",
+        "record_digest",
+        "record_missing",
     ],
 )
 def test_resume_rejects_corrupted_termination_record_before_execution(
@@ -180,14 +197,18 @@ def test_resume_rejects_corrupted_termination_record_before_execution(
         state = json.loads(row["termination_state_vector"])
         state[0] += 0.05
         row["termination_state_vector"] = json.dumps(state)
-    elif mutation == "state_hubble":
+    elif mutation == "state_hubble_sign":
         state = json.loads(row["termination_state_vector"])
-        state[1] += 0.25
+        state[1] = -state[1]
         row["termination_state_vector"] = json.dumps(state)
     elif mutation == "primary_nan":
         row["termination_threshold"] = "nan"
     elif mutation == "outcome":
         row["outcome"] = "monotonic_contraction"
+    elif mutation == "record_digest":
+        row["termination_record_sha256"] = "0" * 64
+    elif mutation == "record_missing":
+        (output / row["termination_record_path"]).unlink()
     else:  # pragma: no cover
         raise AssertionError(f"Unknown mutation: {mutation}")
     _write_rows(index, rows)
@@ -202,7 +223,54 @@ def test_resume_rejects_corrupted_termination_record_before_execution(
     monkeypatch.setattr(runner, "_integrate_point", forbidden_integration)
     with pytest.raises(
         ValueError,
-        match="(?i)terminated|termination|domain|outcome|constraint",
+        match="(?i)terminated|termination|domain|outcome|constraint|evidence|checksum|missing",
     ):
         runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
     assert executed is False
+
+
+@pytest.mark.parametrize(
+    "forged_outcome",
+    ["constraint_violation", "degenerate_turning_event", "unresolved_event_detection"],
+)
+def test_resume_recomputes_outcome_even_with_matching_forged_artifact(
+    tmp_path,
+    monkeypatch,
+    forged_outcome,
+) -> None:
+    scan = _write_domain_protocol(tmp_path)
+    output = tmp_path / "output"
+    index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    rows = _rows(index)
+    row = rows[0]
+    old_record = output / row["termination_record_path"]
+    payload = read_termination_record(old_record, row["termination_record_sha256"])
+    payload["classification"]["outcome"] = forged_outcome
+    forged_record, forged_digest = write_content_addressed_termination_record(
+        payload,
+        output / "termination_records",
+        row["run_id"],
+    )
+    row["outcome"] = forged_outcome
+    row["termination_record_path"] = str(forged_record.relative_to(output))
+    row["termination_record_sha256"] = forged_digest
+    _write_rows(index, rows)
+
+    monkeypatch.setattr(
+        runner,
+        "_integrate_point",
+        lambda point: (_ for _ in ()).throw(AssertionError(point.identity.run_id)),
+    )
+    with pytest.raises(ValueError, match="expected 'physical_domain_termination'"):
+        runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+
+
+def test_resume_removes_unreferenced_termination_record(tmp_path) -> None:
+    scan = _write_domain_protocol(tmp_path)
+    output = tmp_path / "output"
+    index = runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    orphan = output / "termination_records" / "orphan.json"
+    orphan.write_text("{}", encoding="utf-8")
+    runner.run_background_scan(scan, output, schema_path=SCAN_SCHEMA)
+    assert not orphan.exists()
+    assert _rows(index)[0]["termination_record_path"]

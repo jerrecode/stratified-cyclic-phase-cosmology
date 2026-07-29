@@ -47,6 +47,7 @@ class RunRecord:
     turnaround_count: int = 0
     degenerate_count: int = 0
     event_sequence: tuple[str, ...] = ()
+    unmatched_hubble_crossings: tuple[dict[str, Any], ...] = ()
     max_abs_constraint_residual: float | None = None
     return_sequence_classifications: dict[str, str] | None = None
     completed_to_requested_end: bool | None = None
@@ -58,6 +59,8 @@ class RunRecord:
     termination_observed: float | None = None
     termination_units: str | None = None
     termination_boundaries: tuple[dict[str, Any], ...] = ()
+    termination_record_path: str | None = None
+    termination_record_sha256: str | None = None
     solver_metadata: dict[str, Any] | None = None
     trajectory_path: str | None = None
 
@@ -66,6 +69,9 @@ class RunRecord:
         mapping["status"] = self.status.value
         mapping["failure_class"] = self.failure_class.value if self.failure_class else None
         mapping["event_sequence"] = list(self.event_sequence)
+        mapping["unmatched_hubble_crossings"] = [
+            dict(item) for item in self.unmatched_hubble_crossings
+        ]
         mapping["termination_state_vector"] = (
             list(self.termination_state_vector)
             if self.termination_state_vector is not None
@@ -80,6 +86,7 @@ class RunRecord:
             "coordinates",
             "specification",
             "event_sequence",
+            "unmatched_hubble_crossings",
             "return_sequence_classifications",
             "termination_state_vector",
             "termination_boundaries",
@@ -101,6 +108,9 @@ def completed_run_record(
     solution: SCPCSolution,
     *,
     coordinates: dict[str, Any] | None = None,
+    unmatched_hubble_crossings: tuple[dict[str, Any], ...] = (),
+    termination_record_path: str | Path | None = None,
+    termination_record_sha256: str | None = None,
     trajectory_path: str | Path | None = None,
 ) -> RunRecord:
     status = RunStatus.COMPLETED if assessment.numerically_valid else RunStatus.REJECTED
@@ -125,6 +135,9 @@ def completed_run_record(
         turnaround_count=assessment.turnaround_count,
         degenerate_count=assessment.degenerate_count,
         event_sequence=assessment.event_sequence,
+        unmatched_hubble_crossings=tuple(
+            dict(item) for item in unmatched_hubble_crossings
+        ),
         max_abs_constraint_residual=assessment.max_abs_constraint_residual,
         return_sequence_classifications=assessment.return_sequence_classifications,
         completed_to_requested_end=solution.completed_to_requested_end,
@@ -146,6 +159,10 @@ def completed_run_record(
         ),
         termination_units=solution.termination_units,
         termination_boundaries=tuple(dict(item) for item in solution.termination_boundaries),
+        termination_record_path=(
+            str(termination_record_path) if termination_record_path is not None else None
+        ),
+        termination_record_sha256=termination_record_sha256,
         solver_metadata=dict(solution.solver_metadata),
         trajectory_path=str(trajectory_path) if trajectory_path is not None else None,
     )

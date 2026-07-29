@@ -22,12 +22,18 @@ from scpc.numerics.provenance import (
     write_provenance,
 )
 from scpc.scans.config import DEFAULT_SCAN_SCHEMA, validate_scan_config
+from scpc.scans.event_evidence import unmatched_hubble_crossing_records
 from scpc.scans.fingerprint import implementation_runtime_fingerprint
 from scpc.scans.grid import ScanPoint, expand_parameter_grid
 from scpc.scans.outcomes import assess_solution
 from scpc.scans.records import completed_run_record, failed_run_record
 from scpc.scans.resume import load_existing_scan_rows
+from scpc.scans.termination_records import (
+    termination_evidence_payload,
+    write_content_addressed_termination_record,
+)
 from scpc.scans.transactions import (
+    cleanup_replaced_termination_record,
     cleanup_replaced_trajectory,
     cleanup_unreferenced_transaction_files,
     replace_index_row_atomic,
@@ -129,6 +135,9 @@ def _summary(rows: list[dict[str, Any]], planned_runs: int) -> dict[str, Any]:
         ),
         "termination_kind_counts": _termination_kind_counts(rows),
         "trajectory_count": sum(bool(row.get("trajectory_path")) for row in rows),
+        "termination_record_count": sum(
+            bool(row.get("termination_record_path")) for row in rows
+        ),
     }
 
 
@@ -205,12 +214,18 @@ def run_background_scan(
     )
     _preflight_outcome_map(scan, points)
 
+    classification = scan.get("classification", {})
+    constraint_threshold = float(classification.get("constraint_threshold", 1.0e-7))
+    hubble_zero_tolerance = float(classification.get("hubble_zero_tolerance", 1.0e-10))
+    return_tolerance = float(classification.get("return_tolerance", 1.0e-3))
+
     output = Path(output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
     index_path = output / "scan_index.csv"
     summary_path = output / "scan_summary.json"
     metadata_path = output / "scan_metadata.json"
     trajectories_dir = output / "trajectories"
+    termination_records_dir = output / "termination_records"
 
     strict_fingerprint, complete_fingerprint = _strict_fingerprint()
     planned_hashes = [point.identity.sha256 for point in points]
@@ -244,14 +259,10 @@ def run_background_scan(
         output,
         points,
         resume=resume,
+        constraint_threshold=constraint_threshold,
     )
     removed_recovery_files = cleanup_unreferenced_transaction_files(output, rows)
     rerun_statuses = set(str(status) for status in scan.get("rerun_statuses", []))
-
-    classification = scan.get("classification", {})
-    constraint_threshold = float(classification.get("constraint_threshold", 1.0e-7))
-    hubble_zero_tolerance = float(classification.get("hubble_zero_tolerance", 1.0e-10))
-    return_tolerance = float(classification.get("return_tolerance", 1.0e-3))
 
     retention = scan.get("retention", {})
     retained_outcomes = set(str(value) for value in retention.get("outcomes", []))
@@ -265,6 +276,8 @@ def run_background_scan(
         old_has_trajectory = bool(old_row and old_row.get("trajectory_path"))
         effective_saved_trajectories = saved_trajectories - int(old_has_trajectory)
         candidate_trajectory: Path | None = None
+        candidate_termination_record: Path | None = None
+        termination_record_sha256: str | None = None
         try:
             solution = _integrate_point(point)
             assessment = assess_solution(
@@ -273,6 +286,40 @@ def run_background_scan(
                 hubble_zero_tolerance=hubble_zero_tolerance,
                 return_tolerance=return_tolerance,
             )
+            unmatched_crossings = unmatched_hubble_crossing_records(
+                solution,
+                hubble_zero_tolerance,
+            )
+            if solution.termination_kind is not None:
+                if solution.termination_state_vector is None:
+                    raise ValueError("Terminated solution is missing its exact state vector")
+                payload = termination_evidence_payload(
+                    run_id=point.identity.run_id,
+                    run_sha256=point.identity.sha256,
+                    outcome=assessment.outcome.value,
+                    numerically_valid=assessment.numerically_valid,
+                    max_abs_constraint_residual=assessment.max_abs_constraint_residual,
+                    bounce_count=assessment.bounce_count,
+                    turnaround_count=assessment.turnaround_count,
+                    degenerate_count=assessment.degenerate_count,
+                    event_sequence=assessment.event_sequence,
+                    unmatched_hubble_crossings=unmatched_crossings,
+                    termination_time=solution.termination_time,
+                    termination_state_vector=solution.termination_state_vector,
+                    termination_constraint_residual=solution.constraint_residual[-1],
+                    termination_boundaries=solution.termination_boundaries,
+                    requested_end_time=solution.requested_end_time,
+                    solver_rtol=solution.solver_metadata["solver_rtol"],
+                    solver_atol=solution.solver_metadata["solver_atol"],
+                    integration_domain=str(solution.solver_metadata["integration_domain"]),
+                )
+                candidate_termination_record, termination_record_sha256 = (
+                    write_content_addressed_termination_record(
+                        payload,
+                        termination_records_dir,
+                        point.identity.run_id,
+                    )
+                )
             if (
                 assessment.numerically_valid
                 and assessment.outcome.value in retained_outcomes
@@ -289,6 +336,13 @@ def run_background_scan(
                 assessment,
                 solution,
                 coordinates=point.coordinates,
+                unmatched_hubble_crossings=unmatched_crossings,
+                termination_record_path=(
+                    candidate_termination_record.relative_to(output)
+                    if candidate_termination_record is not None
+                    else None
+                ),
+                termination_record_sha256=termination_record_sha256,
                 trajectory_path=(
                     candidate_trajectory.relative_to(output)
                     if candidate_trajectory is not None
@@ -301,6 +355,12 @@ def run_background_scan(
                 or str(candidate_trajectory.relative_to(output)) != old_row.get("trajectory_path", "")
             ):
                 candidate_trajectory.unlink(missing_ok=True)
+            if candidate_termination_record is not None and (
+                old_row is None
+                or str(candidate_termination_record.relative_to(output))
+                != old_row.get("termination_record_path", "")
+            ):
+                candidate_termination_record.unlink(missing_ok=True)
             record = failed_run_record(
                 point.identity,
                 point.specification,
@@ -312,6 +372,7 @@ def run_background_scan(
         rows = replace_index_row_atomic(index_path, rows, new_row)
         rows_by_id[record.run_id] = new_row
         cleanup_replaced_trajectory(output, old_row, new_row)
+        cleanup_replaced_termination_record(output, old_row, new_row)
         saved_trajectories = sum(bool(row.get("trajectory_path")) for row in rows)
         _write_json_atomic(summary_path, _summary(rows, len(points)))
 
@@ -325,6 +386,8 @@ def run_background_scan(
         output_files.append(outcome_map_path)
     if trajectories_dir.exists():
         output_files.extend(sorted(trajectories_dir.glob("*.nc")))
+    if termination_records_dir.exists():
+        output_files.extend(sorted(termination_records_dir.glob("*.json")))
     provenance = build_provenance(
         scan_path,
         {
