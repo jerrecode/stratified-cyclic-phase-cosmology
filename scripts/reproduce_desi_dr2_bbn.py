@@ -23,6 +23,8 @@ from scpc.inference.desi_chains import (
 from scpc.inference.desi_likelihood import DESIDR2BAOLikelihood, fit_flat_lcdm_bbn_map
 from scpc.inference.figures import make_aubourg_validation_figure, make_kinematic_figure, make_main_figure
 
+ROW_END = r"\\"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -138,37 +140,59 @@ def _write_latex_tables(report: dict[str, object], output_dir: Path) -> list[Pat
     aubourg = report.get("aubourg_crosscheck")
 
     reproduction = output_dir / "desi_reproduction_table.tex"
-    _write_lines(
-        reproduction,
-        [
-            r"\begin{tabular}{lcc}",
-            r"\toprule",
-            r"Quantity & DESI DR2 published & This pipeline reproduction \\",
-            r"\midrule",
-            rf"$\Omega_m$ (BAO only) & $0.2975\pm0.0086$ & ${bao['omega_m']['mean']:.4f}\pm{_uncertainty(bao['omega_m']):.4f}$ \\",
-            rf"$h\,r_d$ [Mpc] & $101.54\pm0.73$ & ${bao['h_r_drag_Mpc']['mean']:.2f}\pm{_uncertainty(bao['h_r_drag_Mpc']):.2f}$ \\",
-            rf"$\rho(\Omega_m,h r_d)$ & $-0.92$ & ${bao['correlation_omega_m_h_r_drag']:.3f}$ \\",
-            rf"$\Omega_m$ (BAO+BBN) & $0.2977\pm0.0086$ & ${bbn['omega_m']['mean']:.4f}\pm{_uncertainty(bbn['omega_m']):.4f}$ \\",
-            rf"$H_0$ [km s$^{{-1}}$ Mpc$^{{-1}}$] & $68.51\pm0.58$ & ${bbn['H0']['mean']:.2f}\pm{_uncertainty(bbn['H0']):.2f}$ \\",
-            r"\bottomrule",
-            r"\end{tabular}",
-        ],
-    )
+    reproduction_lines = [
+        r"\begin{tabular}{lcc}",
+        r"\toprule",
+        "Quantity & DESI DR2 published & This pipeline reproduction " + ROW_END,
+        r"\midrule",
+        "$\\Omega_m$ (BAO only) & $0.2975\\pm0.0086$ & $"
+        + f"{bao['omega_m']['mean']:.4f}\\pm{_uncertainty(bao['omega_m']):.4f}"
+        + "$ "
+        + ROW_END,
+        "$h\\,r_d$ [Mpc] & $101.54\\pm0.73$ & $"
+        + f"{bao['h_r_drag_Mpc']['mean']:.2f}\\pm{_uncertainty(bao['h_r_drag_Mpc']):.2f}"
+        + "$ "
+        + ROW_END,
+        "$\\rho(\\Omega_m,h r_d)$ & $-0.92$ & $"
+        + f"{bao['correlation_omega_m_h_r_drag']:.3f}"
+        + "$ "
+        + ROW_END,
+        "$\\Omega_m$ (BAO+BBN) & $0.2977\\pm0.0086$ & $"
+        + f"{bbn['omega_m']['mean']:.4f}\\pm{_uncertainty(bbn['omega_m']):.4f}"
+        + "$ "
+        + ROW_END,
+        "$H_0$ [km s$^{-1}$ Mpc$^{-1}$] & $68.51\\pm0.58$ & $"
+        + f"{bbn['H0']['mean']:.2f}\\pm{_uncertainty(bbn['H0']):.2f}"
+        + "$ "
+        + ROW_END,
+        r"\bottomrule",
+        r"\end{tabular}",
+    ]
+    _write_lines(reproduction, reproduction_lines)
 
     convergence_table = output_dir / "desi_chain_convergence_table.tex"
     convergence_rows: list[str] = []
     for label, details in (("BAO only", convergence["bao_only"]), ("BAO+BBN", convergence["bao_bbn"])):
         selected = details["trials"][-1]
         convergence_rows.append(
-            f"{label} & {details['selected_burn_fraction']:.2f} & {selected['getdist_rminus1']:.4g} & "
-            f"{int(selected['rows'])} & {selected['weighted_ess']:.0f} \\\\"
+            label
+            + " & "
+            + f"{details['selected_burn_fraction']:.2f}"
+            + " & "
+            + f"{selected['getdist_rminus1']:.4g}"
+            + " & "
+            + str(int(selected["rows"]))
+            + " & "
+            + f"{selected['weighted_ess']:.0f}"
+            + " "
+            + ROW_END
         )
     _write_lines(
         convergence_table,
         [
             r"\begin{tabular}{lrrrr}",
             r"\toprule",
-            r"Chain set & Burn fraction & GetDist $R-1$ & Rows & Weighted ESS \\",
+            "Chain set & Burn fraction & GetDist $R-1$ & Rows & Weighted ESS " + ROW_END,
             r"\midrule",
             *convergence_rows,
             r"\bottomrule",
@@ -176,17 +200,35 @@ def _write_latex_tables(report: dict[str, object], output_dir: Path) -> list[Pat
         ],
     )
 
+    q0 = kinematics["q0"]
+    wtot = kinematics["w_tot0"]
+    zacc = kinematics["z_acc"]
     kinematic_table = output_dir / "kinematic_summary_table.tex"
     _write_lines(
         kinematic_table,
         [
             r"\begin{tabular}{lcc}",
             r"\toprule",
-            r"Quantity & Median & 68\% interval \\",
+            "Quantity & Median & 68\\% interval " + ROW_END,
             r"\midrule",
-            rf"$q_0$ & ${kinematics['q0']['median']:.4f}$ & $[{kinematics['q0']['q16']:.4f},{kinematics['q0']['q84']:.4f}]$ \\",
-            rf"$w_{{\rm tot},0}$ & ${kinematics['w_tot0']['median']:.4f}$ & $[{kinematics['w_tot0']['q16']:.4f},{kinematics['w_tot0']['q84']:.4f}]$ \\",
-            rf"$z_{{\rm acc}}$ & ${kinematics['z_acc']['median']:.4f}$ & $[{kinematics['z_acc']['q16']:.4f},{kinematics['z_acc']['q84']:.4f}]$ \\",
+            "$q_0$ & $"
+            + f"{q0['median']:.4f}"
+            + "$ & $["
+            + f"{q0['q16']:.4f},{q0['q84']:.4f}"
+            + "]$ "
+            + ROW_END,
+            "$w_{\\rm tot,0}$ & $"
+            + f"{wtot['median']:.4f}"
+            + "$ & $["
+            + f"{wtot['q16']:.4f},{wtot['q84']:.4f}"
+            + "]$ "
+            + ROW_END,
+            "$z_{\\rm acc}$ & $"
+            + f"{zacc['median']:.4f}"
+            + "$ & $["
+            + f"{zacc['q16']:.4f},{zacc['q84']:.4f}"
+            + "]$ "
+            + ROW_END,
             r"\bottomrule",
             r"\end{tabular}",
         ],
@@ -200,12 +242,23 @@ def _write_latex_tables(report: dict[str, object], output_dir: Path) -> list[Pat
             [
                 r"\begin{tabular}{lr}",
                 r"\toprule",
-                r"Diagnostic & Value \\",
+                "Diagnostic & Value " + ROW_END,
                 r"\midrule",
-                f"Posterior-spanning evaluations & {aubourg['samples']} \\\\ ",
-                rf"RMS fractional difference & ${aubourg['rms_fractional_difference']:.3e}$ \\",
-                rf"Maximum absolute fractional difference & ${aubourg['max_abs_fractional_difference']:.3e}$ \\",
-                rf"CAMB $r_d$ range [Mpc] & ${aubourg['r_drag_camb_min_Mpc']:.3f}$--${aubourg['r_drag_camb_max_Mpc']:.3f}$ \\",
+                "Posterior-spanning evaluations & " + str(aubourg["samples"]) + " " + ROW_END,
+                "RMS fractional difference & $"
+                + f"{aubourg['rms_fractional_difference']:.3e}"
+                + "$ "
+                + ROW_END,
+                "Maximum absolute fractional difference & $"
+                + f"{aubourg['max_abs_fractional_difference']:.3e}"
+                + "$ "
+                + ROW_END,
+                "CAMB $r_d$ range [Mpc] & $"
+                + f"{aubourg['r_drag_camb_min_Mpc']:.3f}"
+                + "$--$"
+                + f"{aubourg['r_drag_camb_max_Mpc']:.3f}"
+                + "$ "
+                + ROW_END,
                 r"\bottomrule",
                 r"\end{tabular}",
             ],
