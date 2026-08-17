@@ -6,40 +6,71 @@ on:
       - "paper/**"
       - "src/**"
       - "configs/**"
+      - "data/analysis_ready/desi_dr2_bao/**"
       - "scripts/reproduce.py"
+      - "scripts/reproduce_desi_dr2_bbn.py"
+      - "scripts/prefetch_desi_dr2_chains.sh"
       - "workflows/reproduce.yaml"
+      - ".github/workflows/paper.yml"
   pull_request:
     paths:
       - "paper/**"
       - "src/**"
       - "configs/**"
+      - "data/analysis_ready/desi_dr2_bao/**"
       - "scripts/reproduce.py"
+      - "scripts/reproduce_desi_dr2_bbn.py"
+      - "scripts/prefetch_desi_dr2_chains.sh"
       - "workflows/reproduce.yaml"
+      - ".github/workflows/paper.yml"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: scpc-publication-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install project
-        run: python -m pip install -e .
-      - name: Reproduce paper products
+          cache: pip
+      - name: Restore resumable DESI chain cache
+        uses: actions/cache@v4
+        with:
+          path: data/external/desi_dr2_cosmology_chains
+          key: desi-dr2-chains-v2-${{ github.sha }}-${{ github.run_attempt }}
+          restore-keys: |
+            desi-dr2-chains-v2-
+      - name: Install full publication environment
+        run: python -m pip install -e '.[inference]'
+      - name: Reproduce baseline, topology, and layered products
         run: python scripts/reproduce.py
-      - name: Build manuscript
+      - name: Prefetch exact pinned official DESI products
+        run: bash scripts/prefetch_desi_dr2_chains.sh
+      - name: Reproduce DESI chain and inference products
+        run: >-
+          python scripts/reproduce_desi_dr2_bbn.py
+          --download-official-chains
+          --aubourg-samples 128
+          --max-rminus1 0.01
+      - name: Build complete manuscript
         uses: xu-cheng/latex-action@v3
         with:
           root_file: main.tex
           working_directory: paper
           latexmk_use_xelatex: false
-      - name: Upload manuscript
+      - name: Upload manuscript and generated evidence
         uses: actions/upload-artifact@v4
         with:
           name: scpc-paper
-          path: paper/main.pdf
+          path: |
+            paper/main.pdf
+            paper/generated
+            results/desi_dr2_bbn/inference_summary.json
+            results/scpc_verification
+            results/layered_test
+          if-no-files-found: error

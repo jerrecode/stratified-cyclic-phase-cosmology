@@ -1,4 +1,75 @@
 \section{Observational data and comparison models}
-The public-data registry is machine validated and records release versions, access protocols, product roles, variables, units, dimensions, and retrieval instructions. The initial core background inputs are Planck CMB likelihood products, DESI BAO measurements, and Type Ia supernova distance data. ACT, DES, eBOSS, Euclid, GWOSC, and NANOGrav products support later perturbation, growth, map, and gravitational-wave tests.
+The machine-validated public-data registry records release versions, access protocols, product roles, variables, units, dimensions, and retrieval instructions. The analysis-ready directory pins the official DESI DR1 and DR2 all-tracer Gaussian BAO vectors and covariances from the Cobaya BAO-data repository, including upstream paths, commit identifiers, row order, and SHA-256 hashes. DR1 and DR2 overlap and therefore are fitted separately rather than multiplied as statistically independent likelihoods \cite{desi2024iii,desi2024iv,desi2025dr2}.
 
-Standard comparison curves are generated on identical redshift grids for flat $\Lambda$CDM, curved $\Lambda$CDM, $w$CDM, and CPL models. Literature cyclic models will be included only through validated reproduction adapters rather than hand-entered curves.
+For $D_H=c/H$ and transverse comoving distance $D_M$, the measured combinations are $D_H/r_d$, $D_M/r_d$, and
+\begin{equation}
+\frac{D_V}{r_d}=\frac{[zD_HD_M^2]^{1/3}}{r_d}.
+\end{equation}
+The Gaussian statistic uses the authoritative mixed-observable row order,
+\begin{equation}
+\chi^2=(\mathbf d_{\rm model}-\mathbf d)^T C^{-1}(\mathbf d_{\rm model}-\mathbf d).
+\end{equation}
+BAO alone constrains the ruler combination
+\begin{equation}
+\eta\equiv\frac{H_0r_d}{c},
+\end{equation}
+with late-time shape parameters; it does not separately determine $H_0$ and $r_d$. The BBN calibration enters as a prior on $\omega_b=\Omega_bh^2$, using the Sch\"oneberg PRyMordial determination adopted by DESI, and $r_d$ is then calculated under the declared standard early-Universe assumptions \cite{schoneberg2024}. It is therefore misleading to draw BBN as if it were a direct $r_d$ measurement in the $(H_0,r_d)$ plane.
+
+\subsection{Posterior reproduction and convergence}
+Publication posterior plots use the official DESI DR2 Cobaya MCMC chain release rather than inverse-Jacobian errors from a local optimizer \cite{cobaya,desi2025dr2}. GetDist is used for convergence tests and marginalized two-dimensional densities \cite{getdist}. The publication workflow downloads the four sample files together with the documented release-side checkpoint, proposal covariance, and updated Cobaya configuration. Before inference, the prefetch stage requires both the pinned byte length and SHA-256 digest of every selected chain and metadata product; the Python report independently serializes the observed hashes, paths, byte counts, and source URLs. This makes accidental upstream mutation or a truncated cached file a hard failure rather than an unrecorded analysis change. Instead of applying an unexplained fixed burn fraction, the pipeline tests a predeclared sequence of candidate cuts and retains the earliest one satisfying the multivariate GetDist $R-1\le0.01$ criterion. The selected cut and full convergence summary are serialized with each result.
+
+Compressed Cobaya rows carry nonuniform weights. Any finite set of CAMB posterior evaluations used for a figure is therefore chosen at deterministic, equally spaced positions in cumulative posterior weight, not by equally spaced MCMC row number. Repeated selections are represented by their multiplicity. Marginalized constraints themselves continue to use the complete weighted released chains.
+
+CAMB supplies $r_d$, BAO distances for the independent MAP regression and posterior residual diagnostic, and the high-redshift species densities, including the momentum-integrated massive-neutrino contribution \cite{camb2000,camb2026}. The legacy Aubourg fitting formula is evaluated only as a supplementary backend cross-check and never substitutes for CAMB in the calibrated inference \cite{aubourg2015}.
+
+\subsection{Separate 2026 Lyman-$\alpha$ full-shape result}
+The July 2026 DESI DR2 Results IV analysis adds broadband Alcock--Paczynski information from the full Lyman-$\alpha$ forest auto-correlation and its cross-correlation with quasars. At $z_{\rm eff}=2.33$ the published joint AP+BAO summary is
+\begin{equation}
+D_H/r_d=8.600\pm0.066,\qquad D_M/r_d=39.32\pm0.33,
+\end{equation}
+and the paper quotes $\Omega_m=0.325\pm0.018$ from the Lyman-$\alpha$ AP information in flat $\Lambda$CDM and $H_0=66.5\pm1.3\,\mathrm{km\,s^{-1}\,Mpc^{-1}}$ when the Lyman-$\alpha$ result is combined with a BBN prior \cite{desi2026iv}. The companion pre-unblinding validation found the BAO and AP parameters stable but a significant mock bias in the inferred growth-rate parameter $f\sigma_8$; that growth measurement was therefore excluded from the final analysis and is not registered as an observational constraint here \cite{desi2026lyavalidation}.
+
+This 2026 result is deliberately registered as a separate comparator/holdout. The official DESI data-product documentation reviewed for this work exposes the 2025 Results I/II cosmology chains and maximization products, but we did not identify a release-native joint likelihood or cross-covariance that would justify multiplying the new full-shape summary into the repository's pinned 2025 all-tracer BAO covariance. Reconstructing an unprovided cross-covariance would create false precision. The 2026 result therefore remains outside the production likelihood until an official joint product is available and cryptographically pinned.
+
+\subsection{Statistical interpretation}
+For $n$ measurements and $p$ fitted parameters we report $\nu=n-p$, the upper-tail goodness-of-fit probability, and
+\begin{align}
+\mathrm{AIC}&=\chi^2+2p,\\
+\mathrm{AICc}&=\mathrm{AIC}+\frac{2p(p+1)}{n-p-1},\\
+\mathrm{BIC}&=\chi^2+p\ln n.
+\end{align}
+A $p$-value is not the probability that a model is true, and information criteria compare only the declared candidate set. Local inverse-Jacobian parameter errors are used solely for deterministic likelihood validation; they are unreliable at a parameter bound or along a strongly non-Gaussian degeneracy. Posterior constraints quoted as inference results come from released MCMC samples. A false-positive probability $\alpha$ is meaningful only for a predeclared test, while a false-negative probability additionally requires a specified alternative.
+
+For the posterior residual diagnostic we write $C=LL^T$ and
+\begin{equation}
+\mathbf r_w(\theta)=L^{-1}[\mathbf m(\theta)-\mathbf d],\qquad
+T_{\rm obs}(\theta)=\mathbf r_w^T\mathbf r_w.
+\end{equation}
+The displayed component intervals are posterior distributions of $\mathbf r_w(\theta)$ evaluated with exact CAMB predictions. A Cholesky component is basis- and row-order-dependent: component $i$ mixes rows $1,\ldots,i$, so its short row label is an ordering aid rather than an independent residual for one observable. As a separate Bayesian model check we report
+\begin{equation}
+p_{\rm PPC}=\int d\theta\,p(\theta\mid\mathbf d)\,
+\Pr\!\left[T_{\rm rep}(\theta)\ge T_{\rm obs}(\theta)\mid\theta\right],
+\end{equation}
+where a replicated Gaussian BAO vector obeys $\mathbf d_{\rm rep}\sim\mathcal N[\mathbf m(\theta),C]$ and therefore $T_{\rm rep}\sim\chi^2_n$ for fixed $\theta$. Posterior-predictive tail probabilities are generally conservative because the observed data enter both the posterior and the discrepancy; they are not interchangeable with the frequentist $p_{\rm gof}$ of the separately predeclared MAP validation.
+
+\subsection{Measurement-to-model interface}
+The repository tracks datasets by the prediction they require rather than by project name alone. This prevents a public dataset from being treated as constraining \SCPC{} before the corresponding observable has actually been derived.
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{p{0.24\linewidth}p{0.23\linewidth}p{0.31\linewidth}p{0.13\linewidth}}
+\toprule
+Product & Measured quantity & Required \SCPC{} prediction & Status\\
+\midrule
+DESI DR1/DR2 & $D_M/r_d$, $D_H/r_d$, $D_V/r_d$ & Calibrated $H(z)$ and $r_d$ & Comparator only\\
+DESI DR2 2026 Ly$\alpha$ FS & AP+BAO at $z_{\rm eff}=2.33$ & Calibrated high-$z$ distances plus release-native joint covariance & Separate holdout\\
+Planck/ACT & $C_\ell^{TT,TE,EE,\phi\phi}$ & Stable perturbations and Boltzmann transfer & Not derived\\
+Pantheon+/DES SNe & distance modulus, calibrated $H_0$ & Luminosity distance plus calibration/nuisance model & Geometry ready\\
+Euclid/Rubin/Roman & shear, clustering, BAO, SNe & $P(k,z)$, growth, lensing kernels, distances & Await perturbations\\
+GW catalogs & sirens, propagation, populations & $d_L^{\rm GW}(z)$ or detector-domain prediction & Not derived\\
+PTA/LISA & $\Omega_{\rm GW}(f)$ and source signals & Primordial/source spectrum and response & Not derived\\
+\bottomrule
+\end{tabular}
+\caption{Measurement-to-model interface. A product is promoted from comparator to \SCPC{} inference only after the prediction listed in the third column is derived and validated.}
+\label{tab:measurement-interface}
+\end{table}

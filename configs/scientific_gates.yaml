@@ -1,0 +1,72 @@
+schema_version: 1
+description: >-
+  Machine-validated evidential dependency ledger. Status describes what the
+  repository has established, not what the model is intended eventually to do.
+gates:
+  - id: stage0_numerical_consistency
+    status: passed
+    depends_on: []
+    evidence:
+      - CI executes lint, tests, manifest validation, baseline reproduction, numerical verification, and a Stage 1 smoke scan.
+      - configs/scpc_verification.yaml defines a tolerance ladder and cross-solver numerical acceptance thresholds.
+      - Exact root-localized turning and physical-domain termination evidence are serialized and integrity-checked.
+    nonclaim: Passing Stage 0 does not establish recurrence or physical viability.
+
+  - id: stage1_reproduced_background_candidate
+    status: open
+    depends_on:
+      - stage0_numerical_consistency
+    required_evidence:
+      - At least two same-kind return metrics from at least three same-kind exact turning points.
+      - Repeated close returns reproduce under a tighter tolerance ladder.
+      - An algorithmically distinct solver reproduces the global trajectory and exact event topology.
+      - Constraint residuals and local turning-point identities remain within declared thresholds.
+    implementation: configs/scpc_candidate_verification.yaml
+    nonclaim: A Stage 1 candidate is not a stable limit cycle.
+
+  - id: stage2_homogeneous_stability
+    status: blocked
+    depends_on:
+      - stage1_reproduced_background_candidate
+    required_evidence:
+      - Poincare return map.
+      - Variational equations and converged monodromy matrix.
+      - Floquet multipliers with the trivial time-translation mode identified.
+      - Basin and fine-tuning analysis.
+
+  - id: stage3_perturbative_eft_viability
+    status: blocked
+    depends_on:
+      - stage2_homogeneous_stability
+    required_evidence:
+      - Gauge-invariant perturbation equations derived from the declared action.
+      - No-ghost and gradient-stability checks.
+      - Controlled strong-coupling scale and regular evolution through turning events.
+
+  - id: stage4_scpc_observable_transfer
+    status: blocked
+    depends_on:
+      - stage3_perturbative_eft_viability
+    required_evidence:
+      - Validated mapping to background, CMB, LSS, BAO, supernova, and gravitational-wave observables as applicable.
+      - Standard-cosmology limits reproduced against independent Boltzmann software.
+
+  - id: stage5_scpc_statistical_inference
+    status: blocked
+    depends_on:
+      - stage4_scpc_observable_transfer
+    required_evidence:
+      - Synthetic recovery and calibrated interval coverage.
+      - Release-native likelihoods, nuisance parameters, convergence diagnostics, and posterior predictive checks.
+      - Complexity-aware model comparison against matched baselines.
+    comparator_boundary: >-
+      The current DESI DR2 BAO+BBN pipeline is a standard-LambdaCDM
+      reproducibility benchmark and does not satisfy this SCPC inference gate.
+
+  - id: stage6_thermodynamic_topological_extensions
+    status: blocked
+    depends_on:
+      - stage5_scpc_statistical_inference
+    required_evidence:
+      - Conserved or produced thermodynamic currents with explicit constitutive assumptions.
+      - Genuine coordinate-invariant topological charge, winding, circulation, vorticity, or another declared invariant where claimed.

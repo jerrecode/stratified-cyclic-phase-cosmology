@@ -1,4 +1,15 @@
 \section{Reproducibility and data availability}
 \label{app:reproducibility}
 
-The repository contains the simulation code, configurations, tests, manuscript sources, and release manifests. External data remain in their authoritative archives. Every result release should provide the software commit, configuration hashes, dependency versions, external-product identifiers and checksums, labeled numerical arrays, diagnostics, and commands sufficient to regenerate all reported figures and tables. Large raw maps and catalogs are not manuscript dependencies unless their exact archive selection and transformation workflow is recorded.
+The repository contains simulation code, configurations, tests, manuscript sources, and release manifests. Provider-scale chains, maps, catalogs, and strain remain in their authoritative archives unless they are small analysis-critical snapshots whose licenses permit pinning. Every generated inference report records the Git commit, inference-configuration SHA-256 hash, Python/platform information, relevant package versions, external-product URLs, byte sizes, and SHA-256 checksums. The official DESI chain metadata products are retained alongside the sample-file provenance, so convergence and sampling settings can be audited rather than inferred from the figure.
+
+From the repository root, the publication reproduction path is
+\begin{verbatim}
+python scripts/reproduce.py
+bash scripts/prefetch_desi_dr2_chains.sh
+python scripts/reproduce_desi_dr2_bbn.py --download-official-chains
+latexmk -pdf -cd paper/main.tex
+\end{verbatim}
+The prefetch stage is resumable and requires the pinned byte length and SHA-256 digest of every selected DESI sample and metadata product before inference proceeds. It therefore fails closed on a truncated transfer, corrupted cache entry, or upstream byte-level mutation. The subsequent Python report independently records the observed checksums and source URLs. Together these commands regenerate the canonical background, tolerance verification, standard-comparator diagnostic, exact $S^4$ schematic, fixed-background layered test, DESI chain/convergence products, principal and supplementary inference figures, generated tables, and manuscript. The dedicated GitHub Actions inference workflow executes the same sequence in a clean environment, caches only verified external products, and publishes both the PDF and machine-readable inference products as an artifact.
+
+The analysis-ready DESI Gaussian mean vector and covariance are checksum-pinned to their upstream release commit. The larger official MCMC chains remain external to the repository, but the exact sample files and release-side metadata used for the manuscript are cryptographically pinned by the publication prefetch manifest and re-hashed into each inference report. The later 2026 Lyman-$\alpha$ AP+BAO update remains a distinct release product and is not multiplied into the pinned 2025 Results I/II likelihood without an official joint likelihood or covariance. Large raw products are not manuscript dependencies unless the exact archive selection and transformation workflow is recorded.

@@ -9,7 +9,7 @@ import platform
 import subprocess
 import sys
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +67,7 @@ def build_provenance(config_path: str | Path, extra: dict[str, Any] | None = Non
         except importlib.metadata.PackageNotFoundError:
             packages[package] = None
     record: dict[str, Any] = {
-        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "created_utc": datetime.now(UTC).isoformat(),
         "git_commit": _git_commit(),
         "config_path": str(config_path),
         "config_sha256": sha256_file(config_path),

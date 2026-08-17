@@ -22,7 +22,10 @@ jobs:
         run: python -m pip install -e '.[dev]'
       - name: Lint Python
         id: ruff
-        run: ruff check src tests scripts --output-format=concise 2>&1 | tee ruff-report.txt
+        shell: bash
+        run: |
+          set -o pipefail
+          ruff check src tests scripts --output-format=concise 2>&1 | tee ruff-report.txt
       - name: Upload Ruff diagnostics
         if: failure() && steps.ruff.outcome == 'failure'
         uses: actions/upload-artifact@v4
@@ -40,10 +43,14 @@ jobs:
           if-no-files-found: error
       - name: Validate data manifest
         run: scpc validate-manifest
+      - name: Validate scientific gate ledger
+        run: scpc validate-gates
       - name: Reproduce baseline products
         run: python scripts/reproduce.py
       - name: Verify background numerics
         run: scpc verify-background
+      - name: Audit Stage 1 recurrence candidate gate
+        run: scpc audit-candidate
       - name: Run Stage 1 smoke scan
         run: scpc scan-background
       - name: Upload background verification
@@ -52,6 +59,13 @@ jobs:
         with:
           name: scpc-background-verification
           path: results/scpc_verification
+          if-no-files-found: error
+      - name: Upload recurrence candidate audit
+        if: always() && hashFiles('results/scpc_candidate_verification/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: scpc-candidate-verification
+          path: results/scpc_candidate_verification
           if-no-files-found: error
       - name: Upload Stage 1 smoke scan
         if: always() && hashFiles('results/stage1_smoke_scan/**') != ''

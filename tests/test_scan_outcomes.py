@@ -23,18 +23,19 @@ def _solution(
     if turning_kinds:
         if turning_times is None or len(turning_times) != len(turning_kinds):
             raise ValueError("turning_times must match turning_kinds in the test fixture")
-        event_states = np.asarray(
-            [
-                [
-                    float(np.interp(event_time, time, a)),
-                    0.0,
-                    0.1 * index,
-                    0.0,
-                ]
-                for index, event_time in enumerate(event_times)
-            ],
-            dtype=float,
-        )
+        rows: list[list[float]] = []
+        for index, (event_time, event_kind) in enumerate(
+            zip(event_times, turning_kinds, strict=True)
+        ):
+            event_scale = float(np.interp(event_time, time, a))
+            if event_kind == "bounce":
+                event_velocity = 0.0
+            elif event_kind == "turnaround":
+                event_velocity = 2.0 / event_scale
+            else:
+                event_velocity = np.sqrt(2.0) / event_scale
+            rows.append([event_scale, 0.0, 0.1 * index, float(event_velocity)])
+        event_states = np.asarray(rows, dtype=float)
     return SCPCSolution(
         t=time,
         a=a,
@@ -49,7 +50,7 @@ def _solution(
         turning_times=event_times,
         turning_kinds=turning_kinds,
         parameters=SCPCParameters(
-            spatial_curvature_k=0,
+            spatial_curvature_k=1,
             rho_m_ref=0.0,
             rho_r_ref=0.0,
             potential=PeriodicPotential(offset=3.0, amplitude=0.0),
@@ -194,4 +195,48 @@ def test_inconsistent_event_data_raises_result_integrity_error() -> None:
     solution = _solution(hubble=[0.3, 0.2, 0.1])
     solution.turning_kinds = ("bounce",)
     with pytest.raises(ResultIntegrityError, match="equal lengths"):
+        assess_solution(solution)
+
+
+def test_noniterable_turning_kinds_are_result_integrity_errors() -> None:
+    solution = _solution(hubble=[0.3, 0.2, 0.1])
+    solution.turning_kinds = None  # type: ignore[assignment]
+    with pytest.raises(ResultIntegrityError, match="kinds must be iterable"):
+        assess_solution(solution)
+
+
+def test_turning_state_must_lie_on_hubble_zero_surface() -> None:
+    solution = _solution(
+        hubble=[-0.2, 0.0, 0.2],
+        turning_kinds=("bounce",),
+        turning_times=[1.0],
+    )
+    assert solution.turning_state_vectors is not None
+    solution.turning_state_vectors[0, 1] = 1.0e-4
+    with pytest.raises(ResultIntegrityError, match="Hubble-zero"):
+        assess_solution(solution)
+
+
+def test_bounce_turning_state_must_have_positive_hubble_derivative() -> None:
+    solution = _solution(
+        hubble=[-0.2, 0.0, 0.2],
+        turning_kinds=("bounce",),
+        turning_times=[1.0],
+    )
+    assert solution.turning_state_vectors is not None
+    event_scale = float(solution.turning_state_vectors[0, 0])
+    solution.turning_state_vectors[0, 3] = 2.0 / event_scale
+    with pytest.raises(ResultIntegrityError, match="sign of dH/dt"):
+        assess_solution(solution)
+
+
+def test_turnaround_turning_state_must_have_negative_hubble_derivative() -> None:
+    solution = _solution(
+        hubble=[0.2, 0.0, -0.2],
+        turning_kinds=("turnaround",),
+        turning_times=[1.0],
+    )
+    assert solution.turning_state_vectors is not None
+    solution.turning_state_vectors[0, 3] = 0.0
+    with pytest.raises(ResultIntegrityError, match="sign of dH/dt"):
         assess_solution(solution)

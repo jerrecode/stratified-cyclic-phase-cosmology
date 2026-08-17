@@ -3,10 +3,70 @@ For
 \begin{equation}
 ds^2=-dt^2+a^2(t)d\Sigma_k^2,
 \end{equation}
-the equations in reduced Planck units are
+the independent homogeneous equations are
 \begin{align}
-H^2+\frac{k}{a^2}&=\frac{1}{3}(\rho_m+\rho_r+\rho_\phi),\\
-\dot H&=\frac{k}{a^2}-\frac12\left(\rho_m+\frac43\rho_r+\dot\phi^2\right),\\
+H^2+\frac{k}{a^2}&=\frac{1}{3\Mpl^2}(\rho_m+\rho_r+\rho_\phi),\\
+\dot H&=\frac{k}{a^2}-\frac{1}{2\Mpl^2}\left(\rho_m+\frac43\rho_r+\dot\phi^2\right),\\
 \ddot\phi+3H\dot\phi+V_{,\phi}&=0,
 \end{align}
-with $\rho_\phi=\dot\phi^2/2+V$ and $p_\phi=\dot\phi^2/2-V$. These equations define the first computational test of the framework.
+with
+\begin{equation}
+\rho_\phi=\frac12\dot\phi^2+V,\qquad
+p_\phi=\frac12\dot\phi^2-V,\qquad
+\rho_m\propto a^{-3},\qquad \rho_r\propto a^{-4}.
+\end{equation}
+The acceleration equation follows from these equations and conservation,
+\begin{equation}
+\frac{\ddot a}{a}=-\frac{\rho+3p}{6\Mpl^2}.
+\end{equation}
+
+\subsection{Exact turning-point conditions}
+At a regular turning point $H_\star=0$, the Friedmann constraint requires
+\begin{equation}
+\rho_\star=\frac{3\Mpl^2k}{a_\star^2}.
+\end{equation}
+For positive total density this immediately excludes a regular turning point for $k\le0$. Eliminating the curvature term from the Raychaudhuri equation gives the exact identity
+\begin{align}
+\dot H_\star
+&=-\frac{\rho_\star+3p_\star}{6\Mpl^2}\\
+&=\left.\frac{2V-\rho_m-2\rho_r-2\dot\phi^2}{6\Mpl^2}\right|_\star.
+\end{align}
+Thus the canonical dust--radiation--scalar system bounces if and only if
+\begin{equation}
+V(\phi_\star)>\frac12\rho_m(a_\star)+\rho_r(a_\star)+\dot\phi_\star^2,
+\end{equation}
+subject to the Friedmann constraint and regularity. Reversing the inequality gives a turnaround. Equality is a degenerate stationary point for which higher derivatives must be examined. These conditions are implemented as analytical filters and independently recomputed event-state audits; they do not imply that a globally recurrent orbit exists.
+
+\subsection{A rigorous no-turnaround certificate from the potential floor}
+The implemented periodic potential has nonnegative amplitude, so
+\begin{equation}
+V(\phi)\ge V_{\min}=V_0,
+\end{equation}
+where $V_0$ is the configured offset. Because dust, radiation, and canonical kinetic energy are nonnegative, $\rho_{\rm tot}\ge V_{\min}$. Combining this inequality with the $H=0$ Friedmann constraint gives a model-independent necessary condition for any regular turning point in the closed ($k=+1$) branch,
+\begin{equation}
+V_{\min}\le \frac{3\Mpl^2}{a_\star^2}.
+\end{equation}
+For $V_{\min}>0$ this yields the strict upper bound
+\begin{equation}
+a_\star\le a_{\rm turn,max}\equiv\sqrt{\frac{3\Mpl^2}{V_{\min}}}.
+\label{eq:turning-upper-bound}
+\end{equation}
+Matter, radiation, and kinetic energy can only tighten this bound. On an expanding branch, $a(t)$ increases continuously until a putative first future turnaround. Therefore an initial condition with $a_0\ge a_{\rm turn,max}$ and $H_0>0$ admits no future turnaround at all, provided the solution remains regular. This is an exclusion theorem, not a finite-integration inference.
+
+If the initial expanding state lies strictly above the bound, the Friedmann inequality is stronger still. Since $a(t)\ge a_0$ throughout the putative pre-turnaround branch,
+\begin{equation}
+H^2(t)\ge \frac{V_{\min}}{3\Mpl^2}-\frac{1}{a^2(t)}
+\ge \frac{V_{\min}}{3\Mpl^2}-\frac{1}{a_0^2}.
+\label{eq:future-hubble-gap}
+\end{equation}
+A strictly positive right-hand side gives a global future Hubble gap: $H$ is bounded away from zero, rather than merely failing to cross it.
+
+For the canonical baseline used in this paper, $V_{\min}=3.5\Mpl^4$ and $a_0=1$ in reduced-Planck units, so
+\begin{align}
+a_{\rm turn,max}&=\sqrt{3/3.5}\simeq0.926<a_0,\\
+H^2(t)&\ge\frac{3.5}{3}-1=\frac16,\qquad H(t)\ge\frac{1}{\sqrt6}\simeq0.408.
+\end{align}
+Consequently the baseline's expanding branch is analytically excluded from future recollapse and hence from future cyclic recurrence, with a strict separation from the $H=0$ event surface. The numerical non-cycle is therefore not merely a consequence of stopping the integration at a finite time. The code emits both the turning-scale bound and the Hubble-gap bound as a machine-readable necessary-condition certificate, and cycle-oriented searches can use the certificate to avoid spending computation on analytically excluded expanding states.
+
+\subsection{What remains free}
+Initial data contain $(a,\phi,\dot\phi)$ plus the sign of $H$, with the magnitude of $H$ fixed by the constraint. A time origin and the overall normalization of $a$ are coordinate conventions. In contrast, the potential parameters and present component densities are physical inputs. They cannot all be auto-derived from the background equations because the system would otherwise be underdetermined. They may be fitted only after a calibrated mapping from the natural-unit solution to measured redshift, the sound horizon, and perturbation observables has been derived. Selecting them merely to force a stable cycle would be circular.

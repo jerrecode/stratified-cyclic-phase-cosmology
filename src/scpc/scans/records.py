@@ -32,8 +32,6 @@ class FailureClass(StrEnum):
 
 @dataclass(frozen=True)
 class RunRecord:
-    """Serializable index record for one immutable experiment specification."""
-
     run_id: str
     run_sha256: str
     status: RunStatus
@@ -49,8 +47,20 @@ class RunRecord:
     turnaround_count: int = 0
     degenerate_count: int = 0
     event_sequence: tuple[str, ...] = ()
+    unmatched_hubble_crossings: tuple[dict[str, Any], ...] = ()
     max_abs_constraint_residual: float | None = None
     return_sequence_classifications: dict[str, str] | None = None
+    completed_to_requested_end: bool | None = None
+    termination_kind: str | None = None
+    termination_time: float | None = None
+    termination_state_vector: tuple[float, ...] | None = None
+    termination_constraint_residual: float | None = None
+    termination_threshold: float | None = None
+    termination_observed: float | None = None
+    termination_units: str | None = None
+    termination_boundaries: tuple[dict[str, Any], ...] = ()
+    termination_record_path: str | None = None
+    termination_record_sha256: str | None = None
     solver_metadata: dict[str, Any] | None = None
     trajectory_path: str | None = None
 
@@ -59,17 +69,27 @@ class RunRecord:
         mapping["status"] = self.status.value
         mapping["failure_class"] = self.failure_class.value if self.failure_class else None
         mapping["event_sequence"] = list(self.event_sequence)
+        mapping["unmatched_hubble_crossings"] = [
+            dict(item) for item in self.unmatched_hubble_crossings
+        ]
+        mapping["termination_state_vector"] = (
+            list(self.termination_state_vector)
+            if self.termination_state_vector is not None
+            else None
+        )
+        mapping["termination_boundaries"] = [dict(item) for item in self.termination_boundaries]
         return mapping
 
     def to_flat_row(self) -> dict[str, Any]:
-        """Return a CSV-safe row while preserving nested values as JSON."""
-
         mapping = self.to_mapping()
         for key in (
             "coordinates",
             "specification",
             "event_sequence",
+            "unmatched_hubble_crossings",
             "return_sequence_classifications",
+            "termination_state_vector",
+            "termination_boundaries",
             "solver_metadata",
         ):
             mapping[key] = json.dumps(
@@ -88,9 +108,20 @@ def completed_run_record(
     solution: SCPCSolution,
     *,
     coordinates: dict[str, Any] | None = None,
+    unmatched_hubble_crossings: tuple[dict[str, Any], ...] = (),
+    termination_record_path: str | Path | None = None,
+    termination_record_sha256: str | None = None,
     trajectory_path: str | Path | None = None,
 ) -> RunRecord:
     status = RunStatus.COMPLETED if assessment.numerically_valid else RunStatus.REJECTED
+    termination_state = (
+        tuple(float(value) for value in solution.termination_state_vector)
+        if solution.termination_state_vector is not None
+        else None
+    )
+    termination_constraint = (
+        float(solution.constraint_residual[-1]) if termination_state is not None else None
+    )
     return RunRecord(
         run_id=identity.run_id,
         run_sha256=identity.sha256,
@@ -104,8 +135,34 @@ def completed_run_record(
         turnaround_count=assessment.turnaround_count,
         degenerate_count=assessment.degenerate_count,
         event_sequence=assessment.event_sequence,
+        unmatched_hubble_crossings=tuple(
+            dict(item) for item in unmatched_hubble_crossings
+        ),
         max_abs_constraint_residual=assessment.max_abs_constraint_residual,
         return_sequence_classifications=assessment.return_sequence_classifications,
+        completed_to_requested_end=solution.completed_to_requested_end,
+        termination_kind=solution.termination_kind,
+        termination_time=(
+            float(solution.termination_time) if solution.termination_time is not None else None
+        ),
+        termination_state_vector=termination_state,
+        termination_constraint_residual=termination_constraint,
+        termination_threshold=(
+            float(solution.termination_threshold)
+            if solution.termination_threshold is not None
+            else None
+        ),
+        termination_observed=(
+            float(solution.termination_observed)
+            if solution.termination_observed is not None
+            else None
+        ),
+        termination_units=solution.termination_units,
+        termination_boundaries=tuple(dict(item) for item in solution.termination_boundaries),
+        termination_record_path=(
+            str(termination_record_path) if termination_record_path is not None else None
+        ),
+        termination_record_sha256=termination_record_sha256,
         solver_metadata=dict(solution.solver_metadata),
         trajectory_path=str(trajectory_path) if trajectory_path is not None else None,
     )
@@ -137,8 +194,6 @@ def failed_run_record(
     *,
     coordinates: dict[str, Any] | None = None,
 ) -> RunRecord:
-    """Record an exception without promoting it to a physical singularity."""
-
     failure_class = classify_exception(error)
     return RunRecord(
         run_id=identity.run_id,
@@ -151,4 +206,5 @@ def failed_run_record(
         failure_class=failure_class,
         exception_type=type(error).__name__,
         exception_message=str(error),
+        completed_to_requested_end=False,
     )

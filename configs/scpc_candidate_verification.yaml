@@ -1,0 +1,32 @@
+schema_version: 1
+description: >-
+  Non-promotional Stage 1 recurrence-candidate verification protocol for the
+  canonical homogeneous SCPC baseline. A completed audit may correctly report
+  that the baseline is not a candidate. An exact necessary-condition exclusion
+  is evaluated first and short-circuits the expensive multi-solver audit when a
+  future regular turnaround is analytically impossible on the declared branch.
+baseline_config: configs/scpc_baseline.yaml
+primary_method: DOP853
+tolerance_levels:
+  - label: medium
+    rtol: 1.0e-8
+    atol: 1.0e-10
+  - label: reference
+    rtol: 1.0e-10
+    atol: 1.0e-12
+independent_solver:
+  method: Radau
+  rtol: 1.0e-9
+  atol: 1.0e-11
+acceptance:
+  max_constraint_residual: 1.0e-7
+  max_solution_error: 1.0e-5
+  max_event_time_error: 1.0e-7
+  max_event_state_error: 1.0e-5
+  max_return_error: 1.0e-3
+  minimum_same_kind_return_metrics: 2
+scientific_boundary:
+  - Analytic preflight exclusions are necessary-condition certificates for the declared trajectory, not global no-go theorems for the model family.
+  - Passing promotes a homogeneous background only to admissible Stage 2 input.
+  - Passing does not establish Floquet stability, perturbative viability, geodesic completeness, or observational support.
+  - A clean audit that reports an analytic exclusion or no repeated close returns is valid negative Stage 1 evidence and must not fail CI.

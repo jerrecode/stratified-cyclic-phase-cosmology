@@ -14,7 +14,6 @@ from scpc.scans.transactions import (
     write_content_addressed_netcdf,
 )
 
-
 FIELDNAMES = ["run_id", "status", "trajectory_path"]
 
 

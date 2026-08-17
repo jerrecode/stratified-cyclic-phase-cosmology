@@ -1,18 +1,66 @@
-\section{Initial computational results}
-\IfFileExists{generated/hubble_comparison.png}{
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.82\linewidth]{generated/hubble_comparison.png}
-\caption{Background expansion functions generated on a common redshift grid for standard comparison models. Parameter values are illustrative configuration inputs, not fitted results.}
-\label{fig:hubble-comparison}
-\end{figure}}{}
+\section{Computational results}
+\subsection{Canonical background: converged and analytically excluded from future recurrence}
+The configured initial state satisfies the closed-FLRW constraint and selects the expanding branch. Over $0\le t\le8\,\Mpl^{-1}$, the scale factor grows from $1$ to $3.949\times10^3$, $H$ grows from $0.426$ to $1.080$ in natural units, and the scalar relaxes toward the potential minimum. No root-localized bounce or turnaround is detected. The maximum normalized Friedmann residual is $8.75\times10^{-11}$; the stored medium-tolerance solution differs from the reference by at most $4.66\times10^{-8}$, and the RK45 solution differs from DOP853 by at most $5.17\times10^{-9}$. These values satisfy the predeclared numerical gates by large margins.
+
+The absence of a turning event is stronger than a finite-time numerical observation for this particular baseline. Its periodic potential has $V_{\min}=3.5\Mpl^4$, so Eq.~\eqref{eq:turning-upper-bound} requires every regular closed-FLRW turning point to obey
+\begin{equation}
+a_\star\le\sqrt{3/3.5}=0.9258\ldots .
+\end{equation}
+The baseline instead begins at $a_0=1$ with $H_0>0$. Until a first future turnaround, $a$ can only increase, and therefore it can never re-enter the analytically allowed turning region. The expanding canonical baseline is consequently excluded from every future regular turnaround and hence from future cyclic recurrence, independently of the choice $t_{\rm end}=8\,\Mpl^{-1}$. The machine-readable turning-feasibility certificate records this exclusion separately from numerical convergence and physical-domain termination. This result falsifies recurrence for the configured baseline trajectory; it does not falsify every point in the broader parameter family.
+
+The Stage~1 candidate command evaluates this exact necessary-condition certificate before launching its tighter DOP853 ladder and independent Radau integration. For the canonical baseline the certificate is decisive, so the expensive recurrence verification is short-circuited with the machine-readable status \texttt{analytically\_excluded\_future\_turnaround}, with \texttt{candidate\_gate\_passed=false} and \texttt{stage2\_input\_eligible=false}. Thus the pipeline does not waste additional integration time trying to manufacture recurrence in a trajectory already excluded by the field equations. No Poincar\'e/Floquet stability claim is made for it.
 
 \IfFileExists{generated/scpc_baseline_background.png}{
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.9\linewidth]{generated/scpc_baseline_background.png}
-\caption{Canonical \SCPC{} baseline trajectory and Friedmann-constraint diagnostic. This run validates the pipeline and is not asserted to be cyclic.}
+\includegraphics[width=0.92\linewidth]{generated/scpc_baseline_background.png}
+\caption{Canonical \SCPC{} baseline. The scale factor is shown as $N=\ln a$ so early evolution is not visually compressed; the $H=0$ reference makes the absence of a turning event explicit; and the lower-right panel shows $|\epsilon_F|$. In addition to the finite-time integration shown here, the positive potential floor yields the analytic upper bound $a_\star\le0.9258$ for any regular turning point, below the expanding initial state $a_0=1$.}
 \label{fig:scpc-baseline}
 \end{figure}}{}
 
-\todo{Replace pipeline-validation figures with converged parameter scans, event classifications, and stability results.}
+\subsection{BAO likelihood validation}
+Before using the standard-cosmology calibration as a pipeline benchmark, we independently fit the pinned DR1 and DR2 Gaussian BAO vectors with four late-time comparison models. The releases are not combined. Table~\ref{tab:bao-validation} reports maximum-likelihood validation results; the quoted parameter uncertainties in this table are local Gaussian diagnostics and are not used as publication posterior intervals.
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Release & Model & $\chi^2/\nu$ & $p_{\rm gof}$ & $\eta=H_0r_d/c$ & $\Delta\mathrm{AICc}$\\
+\midrule
+DR1 & flat $\Lambda$CDM & $12.74/10$ & 0.239 & $0.03401\pm0.00042$ & 0.00\\
+DR1 & curved $\Lambda$CDM & $12.04/9$ & 0.211 & $0.03372\pm0.00054$ & 2.97\\
+DR1 & flat $w$CDM & $12.70/9$ & 0.177 & $0.03382\pm0.00109$ & 3.63\\
+DR1 & flat CPL & $9.07/8$ & 0.336 & $0.03087\pm0.00263$ & 4.71\\
+\addlinespace
+DR2 & flat $\Lambda$CDM & $10.28/11$ & 0.505 & $0.03387\pm0.00024$ & 0.00\\
+DR2 & curved $\Lambda$CDM & $9.96/10$ & 0.444 & $0.03378\pm0.00030$ & 3.14\\
+DR2 & flat $w$CDM & $9.03/10$ & 0.529 & $0.03327\pm0.00058$ & 2.22\\
+DR2 & flat CPL & $5.62/9$ & 0.777 & $0.03051\pm0.00149$ & 3.14\\
+\bottomrule
+\end{tabular}
+\caption{BAO-only maximum-likelihood validation. $\Delta$AICc is evaluated within each release. In both CPL fits $w_0$ reaches its upper prior bound, so the apparent raw $\chi^2$ improvement and local covariance are not evidence for an additional degree of freedom.}
+\label{tab:bao-validation}
+\end{table}
+Flat $\Lambda$CDM has the smallest AICc in both releases. This does not contradict joint DESI, CMB, and supernova analyses, which answer a different question with different likelihoods and parameter degeneracies. The validation therefore supplies no BAO-only basis for claiming new late-time physics.
+
+\subsection{Reproduction of the DESI DR2 flat-$\Lambda$CDM posterior}
+The principal observational result in this paper is deliberately a reproduction benchmark rather than an \SCPC{} constraint. The official DESI DR2 chains are processed with GetDist after a convergence-driven burn selection, and CAMB supplies the calibrated drag scale, posterior residual predictions, high-redshift background histories, and independent MAP regression. The comparison with the published DESI numbers is generated from the same posterior arrays as the figure.
+
+\IfFileExists{generated/desi_reproduction_table.tex}{
+\begin{table}[ht]
+\centering
+\small
+\input{generated/desi_reproduction_table.tex}
+\caption{Direct reproduction of the principal DESI DR2 flat-$\Lambda$CDM BAO and BAO+BBN constraints. The DESI values are the published marginalized results; the reproduction is obtained from the official released chain files.}
+\label{tab:desi-reproduction}
+\end{table}}{}
+
+\IfFileExists{generated/desi_dr2_bao_bbn_posteriors.png}{
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{generated/desi_dr2_bao_bbn_posteriors.png}
+\caption{Reproduction and validation of DESI DR2 2025 BAO+BBN flat-$\Lambda$CDM constraints. Upper left: BAO-only marginalized posterior in $(\Omega_m,h r_d)$; upper right: BBN-calibrated posterior in $(\Omega_m,H_0)$. GetDist constructs the 68\% and 95\% marginalized credible regions from the official released chains. Lower left: exact CAMB BAO predictions are evaluated at deterministic systematic positions in posterior weight and transformed with the Cholesky factor $C=LL^T$ of the complete pinned 13-element covariance. The plotted intervals therefore propagate parameter uncertainty through the full-covariance residual vector. Cholesky component $i$ mixes covariance rows $1,\ldots,i$; the short observable/redshift label below each component identifies only the corresponding position in the authoritative row ordering and must not be read as a one-to-one physical residual. The panel separately reports a Bayesian posterior-predictive tail diagnostic and the frequentist MAP goodness-of-fit statistic. Lower right: CAMB species-fraction medians and 68\% posterior bands are propagated from posterior-representative parameter points; the panel is a standard-$\Lambda$CDM high-redshift extrapolation, not a direct DESI measurement. Massless and massive neutrino contributions are shown separately, and the thermal-neutrino marker is an orientation scale rather than a sharp transition. This entire figure is a standard-cosmology pipeline benchmark, not an \SCPC{} observational fit.}
+\label{fig:desi-dr2-bbn-posteriors}
+\end{figure}}{}
+
+The deterministic CAMB MAP regression of the pinned Gaussian BAO likelihood gives $\chi^2_{\rm BAO}=10.28$ for $\nu=11$ and $p_{\rm gof}\simeq0.505$. Agreement between the released-chain reproduction and the published DESI constraints therefore validates the data ingestion, covariance ordering, chain handling, and standard-cosmology backend without promoting those constraints to evidence for \SCPC{}. The Bayesian posterior-predictive tail probability displayed in Fig.~\ref{fig:desi-dr2-bbn-posteriors} is a posterior model-check quantity and is not interchangeable with the frequentist $p_{\rm gof}$ reported for the predeclared MAP likelihood validation.

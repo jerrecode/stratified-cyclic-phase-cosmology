@@ -42,6 +42,15 @@ _EXECUTION_TYPES: dict[str, type] = {
     "run.method": str,
     "run.rtol": float,
     "run.atol": float,
+    "run.max_step": float,
+    "run.domain_check_substeps": int,
+    "run.domain.min_scale_factor": float,
+    "run.domain.max_scale_factor": float,
+    "run.domain.max_total_density": float,
+    "run.domain.max_abs_hubble": float,
+    "run.domain.max_abs_ricci_scalar": float,
+    "run.domain.max_abs_field": float,
+    "run.domain.max_abs_field_velocity": float,
 }
 
 
@@ -100,13 +109,7 @@ def _execution_cast(path: str, value: Any, expected: type) -> Any:
 
 
 def normalize_background_specification(specification: dict[str, Any]) -> dict[str, Any]:
-    """Return the values exactly as the background executor will interpret them.
-
-    Known numerical and string fields are normalized before run hashing. This
-    prevents representations such as ``101`` and ``101.0`` from scheduling two
-    experiments that execute identically. Unknown extension fields are retained
-    unchanged and remain part of the identity.
-    """
+    """Return the values exactly as the background executor will interpret them."""
 
     normalized = copy.deepcopy(specification)
     for path, expected in _EXECUTION_TYPES.items():
@@ -114,7 +117,17 @@ def normalize_background_specification(specification: dict[str, Any]) -> dict[st
             value = _get_existing_path(normalized, path)
         except KeyError:
             continue
+        if value is None:
+            continue
         _set_existing_path(normalized, path, _execution_cast(path, value, expected))
+
+    run = normalized.get("run")
+    if isinstance(run, dict) and "domain" in run:
+        domain = run["domain"]
+        if domain is None or domain == {}:
+            run.pop("domain")
+        elif not isinstance(domain, dict):
+            raise ValueError("run.domain must be a mapping when configured")
     return normalized
 
 

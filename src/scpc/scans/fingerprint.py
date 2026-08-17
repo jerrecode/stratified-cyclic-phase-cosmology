@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 NUMERICAL_PACKAGES = (
     "numpy",
     "scipy",

@@ -10,7 +10,6 @@ from typing import Any
 import jsonschema
 import yaml
 
-
 DEFAULT_SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
 
 
