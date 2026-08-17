@@ -91,11 +91,19 @@ def _resolve_chain(
         burn = float(explicit_burn)
         getdist_samples = load_getdist_samples(directory, burn_fraction=burn)
         rminus1 = float(getdist_samples.getGelmanRubin())
+        weights = getdist_samples.weights
         convergence = {
             "selection_rule": "explicit command-line override",
             "max_rminus1": float(max_rminus1),
             "selected_burn_fraction": burn,
-            "trials": [{"burn_fraction": burn, "getdist_rminus1": rminus1}],
+            "trials": [
+                {
+                    "burn_fraction": burn,
+                    "getdist_rminus1": rminus1,
+                    "rows": int(getdist_samples.numrows),
+                    "weighted_ess": float(weights.sum() ** 2 / (weights @ weights)),
+                }
+            ],
             "getdist_convergence_summary": getdist_samples.getConvergeTests(
                 what=("MeanVar", "GelmanRubin", "SplitTest", "CorrLengths")
             ),
@@ -117,6 +125,10 @@ def _uncertainty(summary: dict[str, float]) -> float:
     return 0.5 * (float(summary["q84"]) - float(summary["q16"]))
 
 
+def _write_lines(path: Path, lines: list[str]) -> None:
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _write_latex_tables(report: dict[str, object], output_dir: Path) -> list[Path]:
     main = report["main_figure"]
     bao = main["bao_only"]
@@ -126,54 +138,77 @@ def _write_latex_tables(report: dict[str, object], output_dir: Path) -> list[Pat
     aubourg = report.get("aubourg_crosscheck")
 
     reproduction = output_dir / "desi_reproduction_table.tex"
-    reproduction.write_text(
-        """\\begin{tabular}{lcc}\n"
-        "\\toprule\nQuantity & DESI DR2 published & This pipeline reproduction \\\\\n"
-        "\\midrule\n"
-        f"$\\Omega_m$ (BAO only) & $0.2975\\pm0.0086$ & ${bao['omega_m']['mean']:.4f}\\pm{_uncertainty(bao['omega_m']):.4f}$ \\\\\n"
-        f"$h\\,r_d$ [Mpc] & $101.54\\pm0.73$ & ${bao['h_r_drag_Mpc']['mean']:.2f}\\pm{_uncertainty(bao['h_r_drag_Mpc']):.2f}$ \\\\\n"
-        f"$\\rho(\\Omega_m,h r_d)$ & $-0.92$ & ${bao['correlation_omega_m_h_r_drag']:.3f}$ \\\\\n"
-        f"$\\Omega_m$ (BAO+BBN) & $0.2977\\pm0.0086$ & ${bbn['omega_m']['mean']:.4f}\\pm{_uncertainty(bbn['omega_m']):.4f}$ \\\\\n"
-        f"$H_0$ [km s$^{{-1}}$ Mpc$^{{-1}}$] & $68.51\\pm0.58$ & ${bbn['H0']['mean']:.2f}\\pm{_uncertainty(bbn['H0']):.2f}$ \\\\\n"
-        "\\bottomrule\n\\end{tabular}\n"
+    _write_lines(
+        reproduction,
+        [
+            r"\begin{tabular}{lcc}",
+            r"\toprule",
+            r"Quantity & DESI DR2 published & This pipeline reproduction \\",
+            r"\midrule",
+            rf"$\Omega_m$ (BAO only) & $0.2975\pm0.0086$ & ${bao['omega_m']['mean']:.4f}\pm{_uncertainty(bao['omega_m']):.4f}$ \\",
+            rf"$h\,r_d$ [Mpc] & $101.54\pm0.73$ & ${bao['h_r_drag_Mpc']['mean']:.2f}\pm{_uncertainty(bao['h_r_drag_Mpc']):.2f}$ \\",
+            rf"$\rho(\Omega_m,h r_d)$ & $-0.92$ & ${bao['correlation_omega_m_h_r_drag']:.3f}$ \\",
+            rf"$\Omega_m$ (BAO+BBN) & $0.2977\pm0.0086$ & ${bbn['omega_m']['mean']:.4f}\pm{_uncertainty(bbn['omega_m']):.4f}$ \\",
+            rf"$H_0$ [km s$^{{-1}}$ Mpc$^{{-1}}$] & $68.51\pm0.58$ & ${bbn['H0']['mean']:.2f}\pm{_uncertainty(bbn['H0']):.2f}$ \\",
+            r"\bottomrule",
+            r"\end{tabular}",
+        ],
     )
 
     convergence_table = output_dir / "desi_chain_convergence_table.tex"
-    rows = []
+    convergence_rows: list[str] = []
     for label, details in (("BAO only", convergence["bao_only"]), ("BAO+BBN", convergence["bao_bbn"])):
         selected = details["trials"][-1]
-        rows.append(
+        convergence_rows.append(
             f"{label} & {details['selected_burn_fraction']:.2f} & {selected['getdist_rminus1']:.4g} & "
-            f"{int(selected.get('rows', 0))} & {selected.get('weighted_ess', float('nan')):.0f} \\\\"
+            f"{int(selected['rows'])} & {selected['weighted_ess']:.0f} \\\\"
         )
-    convergence_table.write_text(
-        "\\begin{tabular}{lrrrr}\n\\toprule\n"
-        "Chain set & Burn fraction & GetDist $R-1$ & Rows & Weighted ESS \\\\\n"
-        "\\midrule\n" + "\n".join(rows) + "\n\\bottomrule\n\\end{tabular}\n"
+    _write_lines(
+        convergence_table,
+        [
+            r"\begin{tabular}{lrrrr}",
+            r"\toprule",
+            r"Chain set & Burn fraction & GetDist $R-1$ & Rows & Weighted ESS \\",
+            r"\midrule",
+            *convergence_rows,
+            r"\bottomrule",
+            r"\end{tabular}",
+        ],
     )
 
     kinematic_table = output_dir / "kinematic_summary_table.tex"
-    kinematic_table.write_text(
-        "\\begin{tabular}{lcc}\n\\toprule\nQuantity & Median & 68\\% interval \\\\\n\\midrule\n"
-        f"$q_0$ & ${kinematics['q0']['median']:.4f}$ & "
-        f"$[{kinematics['q0']['q16']:.4f},{kinematics['q0']['q84']:.4f}]$ \\\\\n"
-        f"$w_{{\\rm tot},0}$ & ${kinematics['w_tot0']['median']:.4f}$ & "
-        f"$[{kinematics['w_tot0']['q16']:.4f},{kinematics['w_tot0']['q84']:.4f}]$ \\\\\n"
-        f"$z_{{\\rm acc}}$ & ${kinematics['z_acc']['median']:.4f}$ & "
-        f"$[{kinematics['z_acc']['q16']:.4f},{kinematics['z_acc']['q84']:.4f}]$ \\\\\n"
-        "\\bottomrule\n\\end{tabular}\n"
+    _write_lines(
+        kinematic_table,
+        [
+            r"\begin{tabular}{lcc}",
+            r"\toprule",
+            r"Quantity & Median & 68\% interval \\",
+            r"\midrule",
+            rf"$q_0$ & ${kinematics['q0']['median']:.4f}$ & $[{kinematics['q0']['q16']:.4f},{kinematics['q0']['q84']:.4f}]$ \\",
+            rf"$w_{{\rm tot},0}$ & ${kinematics['w_tot0']['median']:.4f}$ & $[{kinematics['w_tot0']['q16']:.4f},{kinematics['w_tot0']['q84']:.4f}]$ \\",
+            rf"$z_{{\rm acc}}$ & ${kinematics['z_acc']['median']:.4f}$ & $[{kinematics['z_acc']['q16']:.4f},{kinematics['z_acc']['q84']:.4f}]$ \\",
+            r"\bottomrule",
+            r"\end{tabular}",
+        ],
     )
 
     paths = [reproduction, convergence_table, kinematic_table]
     if aubourg is not None:
         aubourg_table = output_dir / "aubourg_validation_table.tex"
-        aubourg_table.write_text(
-            "\\begin{tabular}{lr}\n\\toprule\nDiagnostic & Value \\\\\n\\midrule\n"
-            f"Posterior-spanning evaluations & {aubourg['samples']} \\\\\n"
-            f"RMS fractional difference & ${aubourg['rms_fractional_difference']:.3e}$ \\\\\n"
-            f"Maximum absolute fractional difference & ${aubourg['max_abs_fractional_difference']:.3e}$ \\\\\n"
-            f"CAMB $r_d$ range [Mpc] & ${aubourg['r_drag_camb_min_Mpc']:.3f}--{aubourg['r_drag_camb_max_Mpc']:.3f}$ \\\\\n"
-            "\\bottomrule\n\\end{tabular}\n"
+        _write_lines(
+            aubourg_table,
+            [
+                r"\begin{tabular}{lr}",
+                r"\toprule",
+                r"Diagnostic & Value \\",
+                r"\midrule",
+                f"Posterior-spanning evaluations & {aubourg['samples']} \\\\ ",
+                rf"RMS fractional difference & ${aubourg['rms_fractional_difference']:.3e}$ \\",
+                rf"Maximum absolute fractional difference & ${aubourg['max_abs_fractional_difference']:.3e}$ \\",
+                rf"CAMB $r_d$ range [Mpc] & ${aubourg['r_drag_camb_min_Mpc']:.3f}$--${aubourg['r_drag_camb_max_Mpc']:.3f}$ \\",
+                r"\bottomrule",
+                r"\end{tabular}",
+            ],
         )
         paths.append(aubourg_table)
     return paths
