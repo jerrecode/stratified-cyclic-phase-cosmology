@@ -32,10 +32,11 @@ posterior_products:
   metadata_products:
     - chain.checkpoint
     - chain.covmat
-    - chain.input.yaml
-    - chain.margestats
-    - chain.progress
     - chain.updated.yaml
+  metadata_note: >-
+    The DESI chain data model documents chain.checkpoint and chain.covmat for standard runs and
+    an input.yaml or updated.yaml configuration product. The DR2 chain products used here expose
+    chain.updated.yaml; no undocumented margestats or progress files are assumed.
 chain_processing:
   engine: GetDist
   burn_selection: earliest_candidate_passing_multivariate_R_minus_1
