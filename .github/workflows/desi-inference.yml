@@ -1,0 +1,35 @@
+name: DESI DR2 posterior reproduction
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/scpc/inference/**'
+      - 'scripts/reproduce_desi_dr2_bbn.py'
+      - 'configs/inference/desi_dr2_bbn.yaml'
+      - 'data/analysis_ready/desi_dr2_bao/**'
+      - '.github/workflows/desi-inference.yml'
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install inference environment
+        run: python -m pip install -e '.[inference]'
+      - name: Reproduce official-chain posterior figure
+        run: >-
+          python scripts/reproduce_desi_dr2_bbn.py
+          --download-official-chains
+          --aubourg-samples 24
+      - name: Upload publication inference products
+        uses: actions/upload-artifact@v4
+        with:
+          name: desi-dr2-bao-bbn-inference
+          path: results/desi_dr2_bbn
+          if-no-files-found: error
