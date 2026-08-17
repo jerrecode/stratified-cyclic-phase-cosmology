@@ -1,0 +1,29 @@
+schema_version: 1
+description: >-
+  Non-promotional Stage 1 recurrence-candidate verification protocol for the
+  canonical homogeneous SCPC baseline. A completed audit may correctly report
+  that the baseline is not a candidate.
+baseline_config: configs/scpc_baseline.yaml
+primary_method: DOP853
+tolerance_levels:
+  - label: medium
+    rtol: 1.0e-8
+    atol: 1.0e-10
+  - label: reference
+    rtol: 1.0e-10
+    atol: 1.0e-12
+independent_solver:
+  method: Radau
+  rtol: 1.0e-9
+  atol: 1.0e-11
+acceptance:
+  max_constraint_residual: 1.0e-7
+  max_solution_error: 1.0e-5
+  max_event_time_error: 1.0e-7
+  max_event_state_error: 1.0e-5
+  max_return_error: 1.0e-3
+  minimum_same_kind_return_metrics: 2
+scientific_boundary:
+  - Passing promotes a homogeneous background only to admissible Stage 2 input.
+  - Passing does not establish Floquet stability, perturbative viability, geodesic completeness, or observational support.
+  - A clean audit that reports no repeated close returns is a valid negative Stage 1 result and must not fail CI.
