@@ -1,10 +1,11 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from scpc.inference.desi_chains import load_cobaya_chains, weighted_correlation, weighted_quantile
 from scpc.inference.desi_likelihood import load_covariance, load_mean
-from scpc.inference.figures import aubourg_r_drag_mpc
+from scpc.inference.figures import aubourg_r_drag_mpc, systematic_posterior_indices
 
 
 def test_cobaya_chain_reader_and_derived_h_rd(tmp_path: Path) -> None:
@@ -24,6 +25,17 @@ def test_weighted_correlation_has_expected_sign() -> None:
     y = np.asarray([2.0, 1.0, 0.0])
     w = np.ones(3)
     assert np.isclose(weighted_correlation(x, y, w), -1.0)
+
+
+def test_systematic_posterior_indices_respects_compressed_weights() -> None:
+    indices, multiplicities = systematic_posterior_indices(np.asarray([1.0, 3.0]), 4)
+    assert np.array_equal(indices, [0, 1])
+    assert np.array_equal(multiplicities, [1.0, 3.0])
+
+
+def test_systematic_posterior_indices_rejects_invalid_weights() -> None:
+    with pytest.raises(ValueError):
+        systematic_posterior_indices(np.asarray([1.0, -1.0]), 4)
 
 
 def test_pinned_desi_files_have_expected_dimensions() -> None:
