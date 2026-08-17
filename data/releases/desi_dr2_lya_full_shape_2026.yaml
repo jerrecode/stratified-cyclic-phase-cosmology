@@ -1,0 +1,76 @@
+id: desi_dr2_lya_full_shape_2026
+title: DESI DR2 Results IV Lyman-alpha Full-Shape and Alcock-Paczynski Constraints
+provider: Dark Energy Spectroscopic Instrument
+release: DR2 Results IV
+release_date: '2026-07-29'
+access_level: public
+scientific_domains:
+- bao
+- background
+- large_scale_structure
+- lyman_alpha
+roles:
+- posterior_comparison
+- model_comparison
+- validation
+- future_likelihood_tracking
+landing_page: https://www.desi.lbl.gov/2026/07/30/new-desi-dr2-lyman-alpha-results-shed-light-on-dark-energy/
+documentation: https://arxiv.org/abs/2607.27410
+citation: DESI Collaboration, DESI DR2 Results IV, arXiv:2607.27410 (2026).
+license: Public publication products; observe DESI acknowledgement and source-specific terms.
+notes:
+- The full-shape analysis combines Lyman-alpha forest auto-correlations and cross-correlations with quasars and adds broadband Alcock-Paczynski information beyond the BAO peak.
+- The key result is reported at effective redshift z_eff=2.33.
+- The companion validation paper is arXiv:2607.27411.
+- Mock validation found a significant bias in the inferred growth-rate parameter f sigma_8, so that measurement was excluded from the final analysis and must not be ingested as a DESI DR2 Results IV constraint.
+- This release is tracked separately from the pinned 2025 DESI DR2 Results I/II BAO covariance. Do not multiply overlapping products as independent data.
+- No release-native joint covariance or likelihood combining this 2026 full-shape result with the repository's pinned 2025 Results I/II likelihood was identified in the official DESI data-product documentation at the 2026-08-17 verification date.
+access:
+  method: publication_tracking_until_release_native_likelihood_is_available
+  base_url: https://arxiv.org/abs/2607.27410
+  authentication: None.
+  instructions:
+  - Use the published values below only as a separately labelled comparator or holdout summary.
+  - Before any joint inference, resolve an official DESI release-native likelihood or joint covariance and record its exact product identifiers and checksums.
+  - Never infer or reconstruct an unprovided cross-covariance between the 2025 BAO likelihood and the 2026 full-shape result.
+  - Do not use f sigma_8 from this analysis because the validation program excluded it from the final measurement.
+  commands: []
+products:
+- id: published_joint_ap_bao_summary
+  required: false
+  purpose: Track the 2026 high-redshift Lyman-alpha AP+BAO result as a separate comparator pending release-native joint likelihood products.
+  selection: Published DESI DR2 Results IV headline constraints at z_eff=2.33.
+  formats:
+  - publication
+  expected_scale: summary values
+  variables:
+  - name: effective redshift
+    symbol: z_eff
+    unit: '1'
+    dimension: dimensionless
+    shape: scalar
+    description: Effective redshift of the joint Lyman-alpha AP and BAO measurement; published value 2.33.
+  - name: radial BAO distance ratio
+    symbol: D_H/r_d
+    unit: '1'
+    dimension: dimensionless
+    shape: scalar
+    description: Published joint AP+BAO result 8.600 +/- 0.066 at z_eff=2.33.
+  - name: transverse BAO distance ratio
+    symbol: D_M/r_d
+    unit: '1'
+    dimension: dimensionless
+    shape: scalar
+    description: Published joint AP+BAO result 39.32 +/- 0.33 at z_eff=2.33.
+  - name: LambdaCDM matter fraction from Lyman-alpha AP
+    symbol: Omega_m
+    unit: '1'
+    dimension: dimensionless
+    shape: scalar
+    description: Published LambdaCDM AP constraint 0.325 +/- 0.018; comparator only, not a native SCPC observable constraint.
+  - name: LambdaCDM Hubble constant from Lyman-alpha plus BBN
+    symbol: H_0
+    unit: km s^-1 Mpc^-1
+    dimension: T^-1
+    shape: scalar
+    description: Published LambdaCDM Lyman-alpha plus BBN constraint 66.5 +/- 1.3 km s^-1 Mpc^-1.

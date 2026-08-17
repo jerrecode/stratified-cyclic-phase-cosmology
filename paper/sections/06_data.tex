@@ -20,7 +20,16 @@ Publication posterior plots use the official DESI DR2 Cobaya MCMC chain release 
 
 Compressed Cobaya rows carry nonuniform weights. Any finite set of CAMB posterior evaluations used for a figure is therefore chosen at deterministic, equally spaced positions in cumulative posterior weight, not by equally spaced MCMC row number. Repeated selections are represented by their multiplicity. Marginalized constraints themselves continue to use the complete weighted released chains.
 
-CAMB supplies $r_d$, BAO distances for the independent MAP regression and posterior residual diagnostic, and the high-redshift species densities, including the momentum-integrated massive-neutrino contribution \cite{camb2000,camb2026}. The legacy Aubourg fitting formula is evaluated only as a supplementary backend cross-check and never substitutes for CAMB in the calibrated inference \cite{aubourg2015}. The later DESI 2026 Lyman-$\alpha$ AP+BAO analysis is tracked separately and is not inserted into the pinned 2025 Results I/II covariance without a release-native joint likelihood or covariance \cite{desi2026iv}.
+CAMB supplies $r_d$, BAO distances for the independent MAP regression and posterior residual diagnostic, and the high-redshift species densities, including the momentum-integrated massive-neutrino contribution \cite{camb2000,camb2026}. The legacy Aubourg fitting formula is evaluated only as a supplementary backend cross-check and never substitutes for CAMB in the calibrated inference \cite{aubourg2015}.
+
+\subsection{Separate 2026 Lyman-$\alpha$ full-shape result}
+The July 2026 DESI DR2 Results IV analysis adds broadband Alcock--Paczynski information from the full Lyman-$\alpha$ forest auto-correlation and its cross-correlation with quasars. At $z_{\rm eff}=2.33$ the published joint AP+BAO summary is
+\begin{equation}
+D_H/r_d=8.600\pm0.066,\qquad D_M/r_d=39.32\pm0.33,
+\end{equation}
+and the paper quotes $\Omega_m=0.325\pm0.018$ from the Lyman-$\alpha$ AP information in flat $\Lambda$CDM and $H_0=66.5\pm1.3\,\mathrm{km\,s^{-1}\,Mpc^{-1}}$ when the Lyman-$\alpha$ result is combined with a BBN prior \cite{desi2026iv}. The companion pre-unblinding validation found the BAO and AP parameters stable but a significant mock bias in the inferred growth-rate parameter $f\sigma_8$; that growth measurement was therefore excluded from the final analysis and is not registered as an observational constraint here \cite{desi2026lyavalidation}.
+
+This 2026 result is deliberately registered as a separate comparator/holdout. The official DESI data-product documentation reviewed for this work exposes the 2025 Results I/II cosmology chains and maximization products, but we did not identify a release-native joint likelihood or cross-covariance that would justify multiplying the new full-shape summary into the repository's pinned 2025 all-tracer BAO covariance. Reconstructing an unprovided cross-covariance would create false precision. The 2026 result therefore remains outside the production likelihood until an official joint product is available and cryptographically pinned.
 
 \subsection{Statistical interpretation}
 For $n$ measurements and $p$ fitted parameters we report $\nu=n-p$, the upper-tail goodness-of-fit probability, and
@@ -53,6 +62,7 @@ The repository tracks datasets by the prediction they require rather than by pro
 Product & Measured quantity & Required \SCPC{} prediction & Status\\
 \midrule
 DESI DR1/DR2 & $D_M/r_d$, $D_H/r_d$, $D_V/r_d$ & Calibrated $H(z)$ and $r_d$ & Comparator only\\
+DESI DR2 2026 Ly$\alpha$ FS & AP+BAO at $z_{\rm eff}=2.33$ & Calibrated high-$z$ distances plus release-native joint covariance & Separate holdout\\
 Planck/ACT & $C_\ell^{TT,TE,EE,\phi\phi}$ & Stable perturbations and Boltzmann transfer & Not derived\\
 Pantheon+/DES SNe & distance modulus, calibrated $H_0$ & Luminosity distance plus calibration/nuisance model & Geometry ready\\
 Euclid/Rubin/Roman & shear, clustering, BAO, SNe & $P(k,z)$, growth, lensing kernels, distances & Await perturbations\\

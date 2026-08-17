@@ -1,5 +1,5 @@
 manifest_version: 0.1.0
-last_verified: '2026-07-28'
+last_verified: '2026-08-17'
 project:
   name: Stratified Cyclic Phase Cosmology
   repository: https://github.com/jerrecode/stratified-cyclic-phase-cosmology
@@ -89,6 +89,7 @@ release_files:
 - releases/desi_dr1_bao_cosmology.yaml
 - releases/desi_dr1_full_shape.yaml
 - releases/desi_dr2_cosmology.yaml
+- releases/desi_dr2_lya_full_shape_2026.yaml
 - releases/pantheon_plus.yaml
 - releases/des_sn5yr.yaml
 - releases/des_y6_cosmology.yaml

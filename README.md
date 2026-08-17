@@ -9,9 +9,23 @@ The repository deliberately separates four structures that must not be conflated
 3. thermodynamic state-space geometry;
 4. numerical discretization.
 
-The initial implementation is a scientifically conservative baseline. It contains standard FLRW comparison models, a canonical scalar stratification field in FLRW spacetime, constraint diagnostics, turning-point return diagnostics, numerical-convergence checks, reproducible model-comparison grids, a machine-validated public-data manifest, and a modular LaTeX paper. It does **not** claim that a recurrent or stable cycle, a fundamental discrete time, or a physical vortex has already been demonstrated.
+The initial implementation is a scientifically conservative baseline. It contains standard FLRW comparison models, a canonical scalar stratification field in FLRW spacetime, constraint diagnostics, exact turning-point physics audits, return diagnostics, numerical-convergence checks, a multi-tolerance/multi-solver recurrence-candidate gate, reproducible model-comparison grids, a machine-validated public-data manifest, and a modular LaTeX paper. It does **not** claim that a recurrent or stable cycle, a fundamental discrete time, or a physical vortex has already been demonstrated.
 
-The repository also contains a publication-grade reproduction of the official DESI DR2 2025 flat-LambdaCDM BAO-only and BAO+BBN posterior products. That calculation is a standard-cosmology validation benchmark for the observational pipeline, not an SCPC observational fit.
+The repository also contains a publication-grade reproduction of the official DESI DR2 2025 flat-LambdaCDM BAO-only and BAO+BBN posterior products. That calculation is a standard-cosmology validation benchmark for the observational pipeline, not an SCPC observational fit. The 2026 DESI DR2 Lyman-alpha full-shape/AP result is tracked separately and is not silently multiplied into the pinned 2025 covariance.
+
+## Scientific gate state
+
+The current evidential dependency state is machine-readable in [`configs/scientific_gates.yaml`](configs/scientific_gates.yaml) and checked by `scpc validate-gates`.
+
+- Stage 0 numerical consistency: passed for the implemented workflows.
+- Stage 1 reproduced background candidate: open; no cyclic region has yet passed the complete recurrence-candidate protocol.
+- Stage 2 homogeneous stability: blocked by Stage 1.
+- Stage 3 perturbative/EFT viability: blocked by Stage 2.
+- Stage 4 SCPC observable transfer: blocked by Stage 3.
+- Stage 5 SCPC statistical inference: blocked by Stage 4.
+- Stage 6 thermodynamic/topological extensions: blocked downstream.
+
+This ordering is enforced to prevent a successful comparator fit or visually oscillatory numerical solution from being promoted into a stronger scientific claim.
 
 ## Research questions
 
@@ -36,17 +50,22 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 
 scpc validate-manifest
+scpc validate-gates
 scpc compare-models --config configs/model_comparisons.yaml --output results/model_comparison
 scpc run-background --config configs/scpc_baseline.yaml --output results/scpc_baseline
 scpc verify-background --config configs/scpc_verification.yaml --output results/scpc_verification
+scpc audit-candidate --config configs/scpc_candidate_verification.yaml --output results/scpc_candidate_verification
 pytest
 ```
+
+`scpc audit-candidate` is intentionally a hypothesis audit rather than a promotional command. A clean result that reports `not_candidate_*` exits successfully and is retained as negative scientific evidence. Only `candidate_gate_passed: true` makes a background admissible input to Stage 2.
 
 Generate the deterministic baseline paper inputs:
 
 ```bash
 python scripts/reproduce.py
 scpc verify-background
+scpc audit-candidate
 ```
 
 Generate the complete publication inputs, including the released DESI DR2 posterior reproduction:
@@ -66,9 +85,11 @@ The DESI prefetch step validates the exact byte length and locally recorded SHA-
 - Standard background quantities on common redshift grids: `H(z)`, `E(z)`, comoving distance, luminosity distance, and distance modulus.
 - SCPC phase-field trajectories: `a(t)`, `H(t)`, `phi(t)`, `dphi/dt`, energy components, pressure, equation of state, and Friedmann-constraint residual.
 - Root-localized turning-point states classified as candidate bounces or turnarounds.
+- Independent turning-point physics audits that recompute the H=0 Friedmann surface, Raychaudhuri derivative, energy-condition combinations, and exact bounce/turnaround theorem from serialized event states.
 - Same-kind return metrics that preserve real-field displacement and report circular winding explicitly.
 - Return-sequence summaries that require repeated close returns but do not claim recurrence from one run.
 - Tolerance-ladder and cross-solver verification reports with explicit acceptance checks and unwrapped-field comparison.
+- Stage 1 candidate-verification reports that additionally compare exact event topology and an algorithmically distinct Radau solution.
 - NetCDF and CSV products with explicit units and coordinates.
 - Publication-ready figures generated from the same arrays used in numerical analysis.
 - A versioned manifest describing public observational releases, products, values, units, dimensions, access protocols, and reproducible retrieval instructions.
@@ -78,10 +99,10 @@ The DESI prefetch step validates the exact byte length and locally recorded SHA-
 
 ```text
 src/scpc/                  importable scientific package
-configs/                   versioned model, run, verification, and inference configurations
+configs/                   versioned model, run, verification, gate, and inference configurations
 data/                      release manifest, schema, checksums, local-data policy
 scripts/                   reproducible workflow and publication entry points
-tests/                     analytical, convergence, unit, regression, provenance, and manifest tests
+tests/                     analytical, convergence, unit, regression, provenance, gate, and manifest tests
 paper/                     modular LaTeX manuscript and paper-local generated products
 docs/                      theory, architecture, conventions, governance, inference contracts, and research gates
 results/                   generated outputs; large results are not committed
@@ -92,11 +113,11 @@ results/                   generated outputs; large results are not committed
 
 The analytic cyclic reference curve supplied for plotting and pipeline testing is not an observationally fitted cosmological theory. Likewise, the first canonical SCPC action is a baseline whose failure is scientifically informative. New terms may be added only with an explicit action, dimensions, conservation law, stability conditions, and a stated standard-model limit.
 
-A close return in one integration is not a recurrence result. Candidate recurrence requires repeated close returns reproduced under tighter tolerances and independent solvers; a stable limit-cycle claim additionally requires a Poincare map, variational equations, converged Floquet multipliers, and perturbative-stability checks.
+A close return in one integration is not a recurrence result. Candidate recurrence requires repeated close returns reproduced under tighter tolerances and an independent solver with matching exact event topology; a stable limit-cycle claim additionally requires a Poincare map, variational equations, converged Floquet multipliers, and perturbative-stability checks.
 
 A periodic scalar potential does not make the field compact. The baseline declares a real target space. Circular topology must be selected explicitly, adjacent potential minima remain distinct strata, and nonzero winding is retained as a separate diagnostic.
 
-The DESI DR2 reproduction does not establish evidence for SCPC or for new cosmological physics. BAO alone constrains `H0 r_d`; the BBN calibration is a prior on the physical baryon density, with `r_d` derived only under the declared standard early-Universe model. The later 2026 DESI Lyman-alpha update is kept separate from the pinned 2025 likelihood until a release-native joint likelihood or covariance supports combination.
+The DESI DR2 reproduction does not establish evidence for SCPC or for new cosmological physics. BAO alone constrains `H0 r_d`; the BBN calibration is a prior on the physical baryon density, with `r_d` derived only under the declared standard early-Universe model. The 2026 DESI Lyman-alpha full-shape result is kept separate from the pinned 2025 likelihood until a release-native joint likelihood or covariance supports combination. Its companion validation found a biased `f sigma_8` estimator in mocks, so that growth measurement is explicitly excluded from the registry of usable constraints.
 
 ## Reproducibility
 

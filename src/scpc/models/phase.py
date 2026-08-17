@@ -42,6 +42,17 @@ class PeriodicPotential:
     target_space: Literal["real", "circle"] = "real"
 
     def __post_init__(self) -> None:
+        for name, value in (
+            ("offset", self.offset),
+            ("amplitude", self.amplitude),
+            ("field_scale", self.field_scale),
+        ):
+            try:
+                finite = np.isfinite(float(value))
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"{name} must be a finite number") from exc
+            if not finite:
+                raise ValueError(f"{name} must be a finite number")
         if isinstance(self.strata_count, bool) or not isinstance(self.strata_count, Integral):
             raise ValueError("strata_count must be an integer")
         if self.amplitude < 0 or self.field_scale <= 0 or self.strata_count < 1:
@@ -77,8 +88,23 @@ class SCPCParameters:
     potential: PeriodicPotential = PeriodicPotential()
 
     def __post_init__(self) -> None:
+        if isinstance(self.spatial_curvature_k, bool) or not isinstance(
+            self.spatial_curvature_k, Integral
+        ):
+            raise ValueError("spatial_curvature_k must be an integer -1, 0, or 1")
         if self.spatial_curvature_k not in (-1, 0, 1):
             raise ValueError("spatial_curvature_k must be -1, 0, or 1")
+        for name, value in (
+            ("rho_m_ref", self.rho_m_ref),
+            ("rho_r_ref", self.rho_r_ref),
+            ("a_ref", self.a_ref),
+        ):
+            try:
+                finite = np.isfinite(float(value))
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"{name} must be a finite number") from exc
+            if not finite:
+                raise ValueError(f"{name} must be a finite number")
         if self.rho_m_ref < 0 or self.rho_r_ref < 0 or self.a_ref <= 0:
             raise ValueError("Reference densities must be non-negative and a_ref positive")
 
@@ -368,12 +394,23 @@ def initial_hubble(
     parameters: SCPCParameters,
     branch: int = 1,
 ) -> float:
-    if a0 <= 0 or branch not in (-1, 1):
-        raise ValueError("a0 must be positive and branch must be +1 or -1")
+    for name, value in (("a0", a0), ("phi0", phi0), ("phi_dot0", phi_dot0)):
+        try:
+            finite = np.isfinite(float(value))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{name} must be a finite number") from exc
+        if not finite:
+            raise ValueError(f"{name} must be a finite number")
+    if isinstance(branch, bool) or not isinstance(branch, Integral) or branch not in (-1, 1):
+        raise ValueError("branch must be the integer +1 or -1")
+    if a0 <= 0:
+        raise ValueError("a0 must be positive")
     rho_m, rho_r, rho_phi, _ = _components(
         np.asarray(a0), np.asarray(phi0), np.asarray(phi_dot0), parameters
     )
     h2 = (rho_m + rho_r + rho_phi) / 3.0 - parameters.spatial_curvature_k / a0**2
+    if not np.isfinite(float(h2)):
+        raise ValueError("Initial state produces a nonfinite Friedmann H^2")
     if h2 < 0:
         raise ValueError(f"Initial state violates the Friedmann constraint: H^2={float(h2)}")
     return float(branch * np.sqrt(h2))
@@ -639,10 +676,33 @@ def integrate_scpc(
 ) -> SCPCSolution:
     """Integrate the homogeneous baseline with turning and checked domain events."""
 
-    if samples < 2:
-        raise ValueError("samples must be at least 2")
-    if domain_check_substeps < 2 or isinstance(domain_check_substeps, bool):
+    if not isinstance(parameters, SCPCParameters):
+        raise TypeError("parameters must be an SCPCParameters instance")
+    try:
+        if len(t_span) != 2:
+            raise ValueError("t_span must contain exactly two endpoints")
+        t_start = float(t_span[0])
+        t_end = float(t_span[1])
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("t_span must contain exactly two finite numeric endpoints") from exc
+    if not np.isfinite(t_start) or not np.isfinite(t_end) or t_end <= t_start:
+        raise ValueError("t_span endpoints must be finite with t_end > t_start")
+    t_span = (t_start, t_end)
+    if isinstance(samples, bool) or not isinstance(samples, Integral) or samples < 2:
+        raise ValueError("samples must be an integer of at least 2")
+    if (
+        isinstance(domain_check_substeps, bool)
+        or not isinstance(domain_check_substeps, Integral)
+        or domain_check_substeps < 2
+    ):
         raise ValueError("domain_check_substeps must be an integer of at least 2")
+    if not np.isfinite(rtol) or not np.isfinite(atol) or rtol <= 0.0 or atol <= 0.0:
+        raise ValueError("rtol and atol must be finite and positive")
+    if not isinstance(method, str) or not method.strip():
+        raise ValueError("method must be a non-empty solver name")
+    if domain is not None and not isinstance(domain, SCPCIntegrationDomain):
+        raise TypeError("domain must be an SCPCIntegrationDomain instance or None")
+
     definitions = _domain_event_definitions(domain, parameters) if domain is not None else ()
     if definitions:
         if max_step is None or not np.isfinite(max_step) or max_step <= 0.0:
@@ -711,7 +771,7 @@ def integrate_scpc(
             np.asarray(sol.t, dtype=float),
             sol.sol,
             definitions,
-            substeps=domain_check_substeps,
+            substeps=int(domain_check_substeps),
         )
         if definitions
         else None
@@ -743,7 +803,7 @@ def integrate_scpc(
         termination_units = str(primary["units"])
 
     effective_end = termination_time if termination_time is not None else float(t_span[1])
-    times = _evaluation_grid(t_span, samples, effective_end)
+    times = _evaluation_grid(t_span, int(samples), effective_end)
     states = np.asarray(sol.sol(times), dtype=float)
     if termination_state is not None:
         states[:, -1] = termination_state
