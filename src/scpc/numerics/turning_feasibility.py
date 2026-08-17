@@ -1,7 +1,7 @@
 """Analytic necessary conditions for homogeneous Hubble turning points.
 
 These certificates are conservative preflight results derived directly from the
-Friedmann constraint.  They can rule out a future turnaround on a declared
+Friedmann constraint. They can rule out a future turnaround on a declared
 branch without integrating farther in time, but they never prove recurrence.
 """
 
@@ -27,6 +27,8 @@ class TurningFeasibilityCertificate:
     initial_hubble: float
     initial_branch: int
     future_turnaround_excluded: bool
+    future_hubble_squared_lower_bound: float | None
+    future_abs_hubble_lower_bound: float | None
     exclusion_reason: str | None
     scientific_scope: str
 
@@ -45,17 +47,22 @@ def turning_feasibility_certificate(
     """Derive conservative turning-point bounds from the declared model.
 
     For the implemented potential with nonnegative amplitude,
-    ``V(phi) >= offset = V_min``.  With nonnegative dust/radiation and canonical
-    kinetic energy, ``rho_total >= V_min``.  At a regular H=0 event in reduced
+    ``V(phi) >= offset = V_min``. With nonnegative dust/radiation and canonical
+    kinetic energy, ``rho_total >= V_min``. At a regular H=0 event in reduced
     Planck units,
 
         rho_total = 3 k / a^2.
 
-    Hence positive-density turning requires ``k=+1``.  If additionally
-    ``V_min>0``, every turning point satisfies ``a <= sqrt(3/V_min)``.  An
-    expanding branch that already starts at or above this bound cannot encounter
-    a future turnaround because ``a`` increases monotonically until such an
-    event would occur.
+    Hence positive-density turning requires ``k=+1``. If additionally
+    ``V_min>0``, every closed-geometry turning point satisfies
+    ``a <= sqrt(3/V_min)``. An expanding branch that already starts at or above
+    this bound cannot encounter a future turnaround because ``a`` increases
+    monotonically until such an event would occur.
+
+    When the potential-floor inequality is already strictly positive at the
+    initial expanding state, the same argument gives a global lower bound on
+    ``H^2`` for the entire future regular branch. That Hubble-gap certificate is
+    stronger than merely saying that a zero is excluded.
     """
 
     potential_minimum = float(parameters.potential.offset)
@@ -82,6 +89,17 @@ def turning_feasibility_certificate(
             "a_turn<=sqrt(3/V_min), so no future turnaround can occur"
         )
 
+    h2_lower_bound: float | None = None
+    abs_h_lower_bound: float | None = None
+    if excluded and nonnegative_total and potential_minimum > 0.0:
+        if parameters.spatial_curvature_k <= 0:
+            candidate_bound = potential_minimum / 3.0
+        else:
+            candidate_bound = potential_minimum / 3.0 - 1.0 / float(a0) ** 2
+        if candidate_bound > 0.0:
+            h2_lower_bound = float(candidate_bound)
+            abs_h_lower_bound = float(np.sqrt(candidate_bound))
+
     return TurningFeasibilityCertificate(
         spatial_curvature_k=int(parameters.spatial_curvature_k),
         potential_minimum=potential_minimum,
@@ -92,6 +110,8 @@ def turning_feasibility_certificate(
         initial_hubble=float(hubble0),
         initial_branch=int(branch),
         future_turnaround_excluded=excluded,
+        future_hubble_squared_lower_bound=h2_lower_bound,
+        future_abs_hubble_lower_bound=abs_h_lower_bound,
         exclusion_reason=reason,
         scientific_scope=(
             "necessary-condition certificate from the homogeneous Friedmann constraint; "
