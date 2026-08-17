@@ -1,0 +1,225 @@
+name: Temporary PR11 turning-evidence fix
+
+on:
+  push:
+    branches:
+      - fix/pr11-turning-evidence-2026-08-17
+    paths:
+      - .github/workflows/pr11-turning-evidence-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/pr11-turning-evidence-2026-08-17
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply review fixes and regression tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected one target, found {count}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "src/scpc/scans/outcomes.py",
+              '''    event_sequence = tuple(solution.turning_kinds)
+              try:
+                  turning_times = np.asarray(solution.turning_times, dtype=float)
+          ''',
+              '''    try:
+                  event_sequence = tuple(solution.turning_kinds)
+              except TypeError as error:
+                  raise ResultIntegrityError("Turning-event kinds must be iterable") from error
+              try:
+                  turning_times = np.asarray(solution.turning_times, dtype=float)
+          ''',
+          )
+
+          replace_once(
+              "src/scpc/scans/outcomes.py",
+              '''    if np.any(~np.isfinite(turning_states)):
+                  raise ResultIntegrityError("Turning-state vectors must be finite")
+
+              constraint = arrays[-1]
+          ''',
+              '''    if np.any(~np.isfinite(turning_states)):
+                  raise ResultIntegrityError("Turning-state vectors must be finite")
+              if turning_states.size:
+                  if np.any(turning_states[:, 0] <= 0.0):
+                      raise ResultIntegrityError(
+                          "Turning-state vectors must have a positive scale factor"
+                      )
+                  if np.any(np.abs(turning_states[:, 1]) > hubble_zero_tolerance):
+                      raise ResultIntegrityError(
+                          "Turning-state vectors must lie on the declared Hubble-zero event surface"
+                      )
+                  for event_kind, state in zip(event_sequence, turning_states, strict=True):
+                      scale_factor = float(state[0])
+                      velocity = float(state[3])
+                      rho_m = float(solution.parameters.matter_density(scale_factor))
+                      rho_r = float(solution.parameters.radiation_density(scale_factor))
+                      hdot = float(
+                          solution.parameters.spatial_curvature_k / scale_factor**2
+                          - 0.5 * (rho_m + 4.0 * rho_r / 3.0 + velocity**2)
+                      )
+                      if not np.isfinite(hdot):
+                          raise ResultIntegrityError(
+                              "Turning-state vectors produce a nonfinite Hubble derivative"
+                          )
+                      if event_kind == "bounce" and hdot <= 0.0:
+                          raise ResultIntegrityError(
+                              "Bounce turning-state vector contradicts the sign of dH/dt"
+                          )
+                      if event_kind == "turnaround" and hdot >= 0.0:
+                          raise ResultIntegrityError(
+                              "Turnaround turning-state vector contradicts the sign of dH/dt"
+                          )
+                      if event_kind == "degenerate":
+                          tolerance = _event_tolerance(solution, abs(hdot))
+                          if abs(hdot) > tolerance:
+                              raise ResultIntegrityError(
+                                  "Degenerate turning-state vector has a resolved nonzero dH/dt"
+                              )
+
+              constraint = arrays[-1]
+          ''',
+          )
+
+          replace_once(
+              "tests/test_scan_outcomes.py",
+              '''    event_states = np.empty((0, 4), dtype=float)
+              if turning_kinds:
+                  if turning_times is None or len(turning_times) != len(turning_kinds):
+                      raise ValueError("turning_times must match turning_kinds in the test fixture")
+                  event_states = np.asarray(
+                      [
+                          [
+                              float(np.interp(event_time, time, a)),
+                              0.0,
+                              0.1 * index,
+                              0.0,
+                          ]
+                          for index, event_time in enumerate(event_times)
+                      ],
+                      dtype=float,
+                  )
+          ''',
+              '''    event_states = np.empty((0, 4), dtype=float)
+              if turning_kinds:
+                  if turning_times is None or len(turning_times) != len(turning_kinds):
+                      raise ValueError("turning_times must match turning_kinds in the test fixture")
+                  rows: list[list[float]] = []
+                  for index, (event_time, event_kind) in enumerate(
+                      zip(event_times, turning_kinds, strict=True)
+                  ):
+                      event_scale = float(np.interp(event_time, time, a))
+                      if event_kind == "bounce":
+                          event_velocity = 0.0
+                      elif event_kind == "turnaround":
+                          event_velocity = 2.0 / event_scale
+                      else:
+                          event_velocity = np.sqrt(2.0) / event_scale
+                      rows.append(
+                          [event_scale, 0.0, 0.1 * index, float(event_velocity)]
+                      )
+                  event_states = np.asarray(rows, dtype=float)
+          ''',
+          )
+
+          replace_once(
+              "tests/test_scan_outcomes.py",
+              '''        parameters=SCPCParameters(
+                  spatial_curvature_k=0,
+          ''',
+              '''        parameters=SCPCParameters(
+                  spatial_curvature_k=1,
+          ''',
+          )
+
+          test_file = Path("tests/test_scan_outcomes.py")
+          test_file.write_text(
+              test_file.read_text(encoding="utf-8")
+              + '''
+
+          def test_noniterable_turning_kinds_are_result_integrity_errors() -> None:
+              solution = _solution(hubble=[0.3, 0.2, 0.1])
+              solution.turning_kinds = None  # type: ignore[assignment]
+              with pytest.raises(ResultIntegrityError, match="kinds must be iterable"):
+                  assess_solution(solution)
+
+
+          def test_turning_state_must_lie_on_hubble_zero_surface() -> None:
+              solution = _solution(
+                  hubble=[-0.2, 0.0, 0.2],
+                  turning_kinds=("bounce",),
+                  turning_times=[1.0],
+              )
+              assert solution.turning_state_vectors is not None
+              solution.turning_state_vectors[0, 1] = 1.0e-4
+              with pytest.raises(ResultIntegrityError, match="Hubble-zero"):
+                  assess_solution(solution)
+
+
+          def test_bounce_turning_state_must_have_positive_hubble_derivative() -> None:
+              solution = _solution(
+                  hubble=[-0.2, 0.0, 0.2],
+                  turning_kinds=("bounce",),
+                  turning_times=[1.0],
+              )
+              assert solution.turning_state_vectors is not None
+              event_scale = float(solution.turning_state_vectors[0, 0])
+              solution.turning_state_vectors[0, 3] = 2.0 / event_scale
+              with pytest.raises(ResultIntegrityError, match="sign of dH/dt"):
+                  assess_solution(solution)
+
+
+          def test_turnaround_turning_state_must_have_negative_hubble_derivative() -> None:
+              solution = _solution(
+                  hubble=[0.2, 0.0, -0.2],
+                  turning_kinds=("turnaround",),
+                  turning_times=[1.0],
+              )
+              assert solution.turning_state_vectors is not None
+              solution.turning_state_vectors[0, 3] = 0.0
+              with pytest.raises(ResultIntegrityError, match="sign of dH/dt"):
+                  assess_solution(solution)
+          ''',
+              encoding="utf-8",
+          )
+
+          for path in ["src/scpc/scans/outcomes.py", "tests/test_scan_outcomes.py"]:
+              compile(Path(path).read_text(encoding="utf-8"), path, "exec")
+          PY
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Validate complete suite
+        shell: bash
+        run: |
+          ruff check --fix src/scpc/scans/outcomes.py tests/test_scan_outcomes.py
+          ruff check src tests scripts
+          pytest -q
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/pr11-turning-evidence-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: authenticate turning-event evidence"
+          git push origin HEAD:fix/pr11-turning-evidence-2026-08-17
