@@ -37,29 +37,18 @@ jobs:
 
           exact = Path('tests/test_exact_event_result_integrity.py')
           text = exact.read_text(encoding='utf-8')
-          old_parameters = '''        parameters=SCPCParameters(
-              spatial_curvature_k=0,
-              rho_m_ref=0.0,
-              rho_r_ref=0.0,
-              potential=PeriodicPotential(offset=3.0, amplitude=0.0),
-          ),
-          solver_metadata={},
-          turning_state_vectors=np.asarray([[1.2, 0.0, 0.0, 0.0]]),
-          '''
-          new_parameters = '''        parameters=SCPCParameters(
-              spatial_curvature_k=1,
-              rho_m_ref=0.0,
-              rho_r_ref=0.0,
-              potential=PeriodicPotential(offset=3.0, amplitude=0.0),
-          ),
-          solver_metadata={},
-          turning_state_vectors=np.asarray([[1.2, 0.0, 0.0, 2.0 / 1.2]]),
-          '''
-          if text.count(old_parameters) != 1:
-              raise RuntimeError(
-                  f'Expected one exact-event synthetic fixture, found {text.count(old_parameters)}'
-              )
-          text = text.replace(old_parameters, new_parameters, 1)
+          curvature = '            spatial_curvature_k=0,\n'
+          if text.count(curvature) < 2:
+              raise RuntimeError('Expected both synthetic and protocol curvature fields')
+          text = text.replace(curvature, '            spatial_curvature_k=1,\n', 1)
+          state = 'turning_state_vectors=np.asarray([[1.2, 0.0, 0.0, 0.0]]),'
+          if text.count(state) != 1:
+              raise RuntimeError(f'Expected one synthetic turning state, found {text.count(state)}')
+          text = text.replace(
+              state,
+              'turning_state_vectors=np.asarray([[1.2, 0.0, 0.0, 2.0 / 1.2]]),',
+              1,
+          )
           exact.write_text(text, encoding='utf-8')
 
           for path in [
