@@ -13,6 +13,7 @@ import yaml
 
 from scpc.models.phase import PeriodicPotential, SCPCParameters, integrate_scpc
 from scpc.models.standard import ExpansionParameters, FLRWExpansion
+from scpc.numerics.candidate_verification import verify_recurrence_candidate
 from scpc.numerics.convergence import (
     run_cross_solver_comparison,
     run_tolerance_ladder,
@@ -24,6 +25,7 @@ from scpc.numerics.provenance import (
     sha256_file,
     write_provenance,
 )
+from scpc.numerics.turning_audit import audit_turning_points
 from scpc.visualization.backgrounds import plot_expansion_comparison, plot_scpc_background
 
 
@@ -35,18 +37,62 @@ def _load_yaml(path: str | Path) -> dict[str, Any]:
     return data
 
 
+def _finite_float(value: object, name: str) -> float:
+    try:
+        converted = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite number") from exc
+    if not np.isfinite(converted):
+        raise ValueError(f"{name} must be a finite number")
+    return converted
+
+
+def _positive_finite_float(value: object, name: str) -> float:
+    converted = _finite_float(value, name)
+    if converted <= 0.0:
+        raise ValueError(f"{name} must be positive")
+    return converted
+
+
+def _strict_int(value: object, name: str, *, minimum: int | None = None) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer")
+    converted = int(value)
+    if minimum is not None and converted < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    return converted
+
+
 def _background_inputs(config: dict[str, Any]) -> tuple[SCPCParameters, dict[str, Any]]:
     potential = PeriodicPotential(**config["model"]["potential"])
     parameters = SCPCParameters(potential=potential, **config["model"]["background"])
+    finite_parameters = {
+        "potential.offset": potential.offset,
+        "potential.amplitude": potential.amplitude,
+        "potential.field_scale": potential.field_scale,
+        "rho_m_ref": parameters.rho_m_ref,
+        "rho_r_ref": parameters.rho_r_ref,
+        "a_ref": parameters.a_ref,
+    }
+    for name, value in finite_parameters.items():
+        _finite_float(value, name)
+
     run = config["run"]
     initial = config["initial_conditions"]
+    start = _finite_float(run["t_start"], "run.t_start")
+    end = _finite_float(run["t_end"], "run.t_end")
+    if end <= start:
+        raise ValueError("run.t_end must be greater than run.t_start")
+    branch = _strict_int(initial["branch"], "initial_conditions.branch")
+    if branch not in (-1, 1):
+        raise ValueError("initial_conditions.branch must be +1 or -1")
     options: dict[str, Any] = {
-        "t_span": (float(run["t_start"]), float(run["t_end"])),
-        "samples": int(run["samples"]),
-        "a0": float(initial["a"]),
-        "phi0": float(initial["phi"]),
-        "phi_dot0": float(initial["phi_dot"]),
-        "branch": int(initial["branch"]),
+        "t_span": (start, end),
+        "samples": _strict_int(run["samples"], "run.samples", minimum=2),
+        "a0": _positive_finite_float(initial["a"], "initial_conditions.a"),
+        "phi0": _finite_float(initial["phi"], "initial_conditions.phi"),
+        "phi_dot0": _finite_float(initial["phi_dot"], "initial_conditions.phi_dot"),
+        "branch": branch,
     }
     return parameters, options
 
@@ -90,8 +136,8 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
     run = config["run"]
     solution = integrate_scpc(
         parameters,
-        rtol=float(run["rtol"]),
-        atol=float(run["atol"]),
+        rtol=_positive_finite_float(run["rtol"], "run.rtol"),
+        atol=_positive_finite_float(run["atol"], "run.atol"),
         method=str(run["method"]),
         **integration_options,
     )
@@ -99,6 +145,7 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
     solution.to_xarray().to_netcdf(dataset_path, engine="scipy")
 
     return_metrics = cycle_return_metrics(solution)
+    turning_audit = audit_turning_points(solution)
     acceptance = config.get("acceptance", {})
     return_tolerance = float(
         acceptance.get(
@@ -112,6 +159,8 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
         ),
         "turning_times": solution.turning_times.tolist(),
         "turning_kinds": list(solution.turning_kinds),
+        "turning_point_physics_audit": [item.to_dict() for item in turning_audit],
+        "turning_point_physics_consistent": all(item.kind_consistent for item in turning_audit),
         "cycle_return_metrics": [asdict(metric) for metric in return_metrics],
         "return_sequence_classifications": classify_return_sequences(
             return_metrics,
@@ -206,6 +255,81 @@ def verify_scpc_background(config_path: str | Path, output_dir: str | Path) -> P
             "workflow": "verify_scpc_background",
             "baseline_config": str(baseline_path),
             "baseline_config_sha256": sha256_file(baseline_path),
+        },
+    )
+    provenance["outputs"] = build_output_inventory([report_path], relative_to=output)
+    write_provenance(output / "provenance.json", provenance)
+    return report_path
+
+
+def audit_scpc_candidate(config_path: str | Path, output_dir: str | Path) -> Path:
+    """Run the non-promotional Stage-1 recurrence-candidate verification gate."""
+
+    config = _load_yaml(config_path)
+    baseline_path = Path(config["baseline_config"])
+    baseline = _load_yaml(baseline_path)
+    parameters, integration_options = _background_inputs(baseline)
+
+    tolerance_levels = tuple(
+        (
+            str(level["label"]),
+            _positive_finite_float(level["rtol"], f"{level['label']}.rtol"),
+            _positive_finite_float(level["atol"], f"{level['label']}.atol"),
+        )
+        for level in config["tolerance_levels"]
+    )
+    independent = config["independent_solver"]
+    acceptance = config["acceptance"]
+    report = verify_recurrence_candidate(
+        parameters,
+        integration_options=integration_options,
+        tolerance_levels=tolerance_levels,
+        primary_method=str(config["primary_method"]),
+        independent_method=str(independent["method"]),
+        independent_rtol=_positive_finite_float(independent["rtol"], "independent_solver.rtol"),
+        independent_atol=_positive_finite_float(independent["atol"], "independent_solver.atol"),
+        max_constraint_residual=_positive_finite_float(
+            acceptance["max_constraint_residual"], "acceptance.max_constraint_residual"
+        ),
+        max_solution_error=_positive_finite_float(
+            acceptance["max_solution_error"], "acceptance.max_solution_error"
+        ),
+        max_event_time_error=_positive_finite_float(
+            acceptance["max_event_time_error"], "acceptance.max_event_time_error"
+        ),
+        max_event_state_error=_positive_finite_float(
+            acceptance["max_event_state_error"], "acceptance.max_event_state_error"
+        ),
+        max_return_error=_positive_finite_float(
+            acceptance["max_return_error"], "acceptance.max_return_error"
+        ),
+        minimum_same_kind_return_metrics=_strict_int(
+            acceptance["minimum_same_kind_return_metrics"],
+            "acceptance.minimum_same_kind_return_metrics",
+            minimum=2,
+        ),
+    )
+    report.update(
+        {
+            "verification_config": str(config_path),
+            "verification_config_sha256": sha256_file(config_path),
+            "baseline_config": str(baseline_path),
+            "baseline_config_sha256": sha256_file(baseline_path),
+        }
+    )
+
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    report_path = output / "candidate_verification.json"
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    provenance = build_provenance(
+        config_path,
+        {
+            "workflow": "audit_scpc_candidate",
+            "baseline_config": str(baseline_path),
+            "baseline_config_sha256": sha256_file(baseline_path),
+            "candidate_gate_passed": bool(report["candidate_gate_passed"]),
+            "candidate_status": str(report["status"]),
         },
     )
     provenance["outputs"] = build_output_inventory([report_path], relative_to=output)
