@@ -8,7 +8,7 @@ a_\star\le\sqrt{3/3.5}=0.9258\ldots .
 \end{equation}
 The baseline instead begins at $a_0=1$ with $H_0>0$. Until a first future turnaround, $a$ can only increase, and therefore it can never re-enter the analytically allowed turning region. The expanding canonical baseline is consequently excluded from every future regular turnaround and hence from future cyclic recurrence, independently of the choice $t_{\rm end}=8\,\Mpl^{-1}$. The machine-readable turning-feasibility certificate records this exclusion separately from numerical convergence and physical-domain termination. This result falsifies recurrence for the configured baseline trajectory; it does not falsify every point in the broader parameter family.
 
-The stronger Stage~1 recurrence-candidate audit is intentionally applied as a hypothesis test rather than a promotion step. Because this baseline has no turning events, it cannot supply the minimum two same-kind return metrics required to enter Stage~2. No Poincare/Floquet stability claim is therefore made for it.
+The Stage~1 candidate command evaluates this exact necessary-condition certificate before launching its tighter DOP853 ladder and independent Radau integration. For the canonical baseline the certificate is decisive, so the expensive recurrence verification is short-circuited with the machine-readable status \texttt{analytically\_excluded\_future\_turnaround}, with \texttt{candidate\_gate\_passed=false} and \texttt{stage2\_input\_eligible=false}. Thus the pipeline does not waste additional integration time trying to manufacture recurrence in a trajectory already excluded by the field equations. No Poincar\'e/Floquet stability claim is made for it.
 
 \IfFileExists{generated/scpc_baseline_background.png}{
 \begin{figure}[ht]
