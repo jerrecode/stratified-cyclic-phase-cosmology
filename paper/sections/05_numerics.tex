@@ -1,6 +1,24 @@
 \section{Numerical implementation}
-The background system is integrated with adaptive explicit Runge--Kutta methods and continuous event detection at $H=0$. The Friedmann constraint is monitored through the normalized residual
+The background system is integrated with adaptive explicit Runge--Kutta methods and dense-output event localization at $H=0$. Physical-domain exits are root-localized and preserved as rejected outcomes rather than silently discarded. The Friedmann constraint is monitored through the normalized residual
 \begin{equation}
-\epsilon_F=\frac{H^2+k/a^2-\rho_{\rm tot}/3}{\max(|\rho_{\rm tot}/3|,\epsilon_*)}.
+\epsilon_F=\frac{H^2+k/a^2-\rho_{\rm tot}/(3\Mpl^2)}{\max(|\rho_{\rm tot}/(3\Mpl^2)|,\epsilon_*)}.
 \end{equation}
-Publication results require tolerance convergence, solver cross-checks, and a declared maximum residual. Software and figures are generated from the same serialized arrays in accordance with reproducible-research practice \cite{wilkinson2016,barker2022}.
+In the reduced-Planck-unit implementation $\Mpl=1$. Turning states are taken from the adaptive solver's continuous interpolant, not from the plotting grid. Every result records configuration and output hashes, solver settings, dependency information, and platform metadata. Publication results require a tolerance ladder, an independent-integrator cross-check, and a predeclared maximum residual \cite{wilkinson2016,barker2022}.
+
+\subsection{Sparse-redshift distance correction}
+For a comparison expansion function $E(z)=H(z)/H_0$, the line-of-sight comoving distance is
+\begin{equation}
+D_C(z)=\frac{c}{H_0}\int_0^z\frac{dz'}{E(z')}.
+\end{equation}
+An earlier implementation used a cumulative trapezoid on the requested redshift array and therefore assigned zero distance to its first element. That is valid only when the first element is exactly $z=0$ and the grid is sufficiently dense; a sparse BAO vector begins at positive redshift. The corrected implementation anchors every integral at the physical lower limit $z=0$ and uses adaptive quadrature at each unique requested redshift. It is regression-tested against the exact Einstein--de Sitter result
+\begin{equation}
+D_C(z)=\frac{2c}{H_0}\left(1-\frac{1}{\sqrt{1+z}}\right).
+\end{equation}
+Expansion functions whose density parameters fail the $z=0$ closure relation are rejected rather than silently renormalized.
+
+\subsection{Verification protocol}
+The stored background-verification run compares DOP853 at coarse, medium, and reference tolerances and separately compares DOP853 with RK45 on the same output grid. For a stored state component $y$, the normalized comparison error is
+\begin{equation}
+\epsilon_y=\frac{\lVert y-y_{\rm ref}\rVert_\infty}{\max(\lVert y_{\rm ref}\rVert_\infty,\epsilon_{\rm floor})}.
+\end{equation}
+The acceptance thresholds are $|\epsilon_F|_{\max}<10^{-7}$, medium-to-reference error below $10^{-5}$, and independent-solver error below $10^{-5}$. Solver verification compares the unwrapped scalar trajectory: periodicity of $V$ does not erase a physical field displacement on the declared real target space.
