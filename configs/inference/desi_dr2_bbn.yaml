@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 id: desi_dr2_2025_bao_bbn_flat_lcdm
 model:
   family: flat_lcdm
@@ -28,7 +28,9 @@ posterior_products:
   official_root: https://data.desi.lbl.gov/public/papers/y3/bao-cosmo-params/cobaya
   bao_only: base/desi-bao-all
   bao_bbn: base/desi-bao-all_schoneberg2024-bbn
-  use: marginalized posterior contours and posterior-predictive checks
+  use: marginalized posterior contours, exact-CAMB posterior residual diagnostics, and model-derived background bands
+  pin_manifest: configs/inference/desi_dr2_chain_pins.json
+  pin_policy: require_exact_byte_length_and_sha256_before_publication_inference
   metadata_products:
     - chain.checkpoint
     - chain.covmat
@@ -36,13 +38,19 @@ posterior_products:
   metadata_note: >-
     The DESI chain data model documents chain.checkpoint and chain.covmat for standard runs and
     an input.yaml or updated.yaml configuration product. The DR2 chain products used here expose
-    chain.updated.yaml; no undocumented margestats or progress files are assumed.
+    chain.updated.yaml; no undocumented margestats or progress files are assumed. The selected
+    sample and metadata files are externally hosted but cryptographically pinned by the companion
+    JSON manifest and independently re-hashed into every generated inference report.
 chain_processing:
   engine: GetDist
   burn_selection: earliest_candidate_passing_multivariate_R_minus_1
   candidate_burn_fractions: [0.0, 0.05, 0.10, 0.20, 0.30]
   maximum_R_minus_1: 0.01
-  note: An explicit command-line burn override is permitted only if it also passes the same convergence threshold.
+  finite_camb_evaluations: deterministic_systematic_positions_in_cumulative_posterior_weight
+  note: >-
+    An explicit command-line burn override is permitted only if it also passes the same convergence
+    threshold. Finite CAMB posterior subsets are selected in cumulative posterior weight rather than
+    equally spaced MCMC row number, because compressed Cobaya rows have nonuniform weights.
 published_reproduction_benchmark:
   source: DESI DR2 Results II Table 5 and Eqs. 17, 19
   bao_only:
@@ -63,13 +71,17 @@ figure_policy:
   main_panels:
     - posterior_omega_m_h_rd_bao_only
     - posterior_omega_m_H0_bao_plus_bbn
-    - full_covariance_posterior_predictive_whitened_residuals
-    - camb_species_fractions_and_characteristic_epochs
+    - exact_camb_full_covariance_posterior_residual_diagnostic
+    - camb_species_fractions_with_posterior_bands_and_characteristic_epochs
+  residual_diagnostic:
+    whitening: cholesky_C_equals_L_LT
+    component_label_policy: row_ordering_aid_not_one_to_one_observable
+    posterior_predictive_tail_probability: bayesian_model_check_not_frequentist_gof
   supplementary:
     - posterior_acceleration_transition
     - aubourg_vs_camb_sound_horizon
   epistemic_labels:
     posterior: data_constrained_standard_cosmology_reproduction
-    posterior_predictive: data_model_consistency_check
-    high_redshift_history: model_extrapolated_from_calibrated_flat_lcdm
+    posterior_residuals: data_model_consistency_diagnostic
+    high_redshift_history: model_extrapolated_from_calibrated_flat_lcdm_with_posterior_uncertainty
     scpc_status: comparator_only_not_scpc_fit
