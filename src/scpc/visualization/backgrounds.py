@@ -50,11 +50,20 @@ def plot_scpc_background(solution: SCPCSolution, output: str | Path) -> None:
     axes[1, 0].set_ylabel(r"$\phi$ [$M_{\rm Pl}$]")
     axes[1, 0].set_title("Scalar trajectory")
 
-    residual = np.maximum(np.abs(solution.constraint_residual), np.finfo(float).tiny)
+    plot_floor = 1.0e-16
+    residual = np.maximum(np.abs(solution.constraint_residual), plot_floor)
     axes[1, 1].plot(solution.t, residual)
     axes[1, 1].set_yscale("log")
+    axes[1, 1].set_ylim(plot_floor, max(1.0e-9, 10.0 * float(np.max(residual))))
     axes[1, 1].set_ylabel(r"$|\epsilon_F|$")
     axes[1, 1].set_title("Friedmann-constraint residual")
+    axes[1, 1].text(
+        0.04,
+        0.08,
+        r"Display floor $10^{-16}$; reported maximum uses unfloored residuals",
+        transform=axes[1, 1].transAxes,
+        fontsize=7,
+    )
 
     for ax in axes[1, :]:
         ax.set_xlabel(r"$t$ [$M_{\rm Pl}^{-1}$]")
