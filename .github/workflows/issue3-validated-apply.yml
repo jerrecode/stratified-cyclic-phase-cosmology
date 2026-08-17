@@ -1,0 +1,57 @@
+name: Temporary validated Stage 1 apply
+
+on:
+  push:
+    branches:
+      - work/issue-sweep-2026-08-17
+    paths:
+      - .github/workflows/issue3-validated-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/issue-sweep-2026-08-17
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Apply exact locally-tested patch
+        shell: bash
+        run: |
+          gzip -dc .github/issue3_complete.patch.gz | git apply --index --whitespace=error -
+          git diff --cached --check
+      - name: Install project
+        run: python -m pip install -e '.[dev]'
+      - name: Ruff and configuration validation
+        shell: bash
+        run: |
+          ruff check --fix src tests scripts
+          ruff check src tests scripts
+          python - <<'PY'
+          from scpc.scans.config import validate_scan_config
+          for path in (
+              'configs/scans/stage1_candidate_search_expanding.yaml',
+              'configs/scans/stage1_candidate_search_contracting.yaml',
+          ):
+              config = validate_scan_config(path)
+              assert config['sampling']['samples'] == 256
+          PY
+      - name: Full regression suite
+        run: pytest -q
+      - name: Commit validated Stage 1 implementation
+        shell: bash
+        run: |
+          rm .github/issue3_complete.patch.gz
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src tests configs docs .github/issue3_complete.patch.gz
+          git diff --cached --check
+          git commit -m 'feat: complete Stage 1 scan rigor and candidate protocol (#3)'
+          git push origin HEAD:work/issue-sweep-2026-08-17
