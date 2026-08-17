@@ -81,6 +81,20 @@ def _derived_value(derived: dict[str, float], *aliases: str) -> float:
     raise KeyError(f"None of {aliases!r} found in CAMB derived parameters {tuple(derived)}")
 
 
+def approximate_neutrino_thermal_transition(parameters: CambLCDMParameters) -> float:
+    """Return a documented thermal-scale marker m_nu ~= 3.151 T_nu(z).
+
+    This marker is only an orientation scale, not a sharp physical transition.  It is
+    deliberately kept separate from CAMB's exact momentum-integrated neutrino density.
+    """
+    if parameters.sum_mnu_eV <= 0:
+        return float("nan")
+    k_b_eV_K = 8.617333262e-5
+    T_nu0_K = (4.0 / 11.0) ** (1.0 / 3.0) * parameters.T_cmb_K
+    T_nu0_eV = k_b_eV_K * T_nu0_K
+    return max(parameters.sum_mnu_eV / (3.151 * T_nu0_eV) - 1.0, 0.0)
+
+
 def background_history(parameters: CambLCDMParameters, z: np.ndarray) -> dict[str, np.ndarray | float]:
     z_arr = np.asarray(z, dtype=float)
     if z_arr.ndim != 1 or np.any(z_arr < 0):
@@ -116,9 +130,12 @@ def background_history(parameters: CambLCDMParameters, z: np.ndarray) -> dict[st
         "H_km_s_Mpc": H,
         "omega_cb": omega_b + omega_c,
         "omega_gamma": omega_gamma,
+        "omega_nu_massless": omega_massless_nu,
+        "omega_nu_massive": omega_massive_nu,
         "omega_nu": omega_massless_nu + omega_massive_nu,
         "omega_lambda": omega_lambda,
         "z_acc": z_acc,
+        "z_nu_thermal": approximate_neutrino_thermal_transition(parameters),
         "z_drag": _derived_value(derived, "zdrag"),
         "z_star": _derived_value(derived, "zstar"),
         "z_eq": _derived_value(derived, "zeq"),
