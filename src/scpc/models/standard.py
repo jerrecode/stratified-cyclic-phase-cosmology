@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.integrate import cumulative_trapezoid
+from scipy.integrate import quad
 
 from scpc.constants import C_KM_S
 
@@ -77,6 +77,25 @@ class FLRWExpansion:
     def hubble(self, z: np.ndarray | float) -> np.ndarray:
         return self.p.H0 * self.e_of_z(z)
 
+    def _chi_to_redshift(self, z: float) -> float:
+        """Dimensionless radial comoving distance anchored at z=0.
+
+        Each requested redshift is integrated from the physical lower limit rather than
+        from the first plotting/data-grid element. This is essential for sparse BAO
+        arrays whose first measurement lies at positive redshift.
+        """
+        if z == 0.0:
+            return 0.0
+        value, _ = quad(
+            lambda zp: 1.0 / float(self.e_of_z(zp)),
+            0.0,
+            float(z),
+            epsabs=1.0e-11,
+            epsrel=1.0e-11,
+            limit=200,
+        )
+        return float(value)
+
     def distance_table(self, z: np.ndarray) -> dict[str, np.ndarray]:
         z_arr = np.asarray(z, dtype=float)
         if z_arr.ndim != 1 or z_arr.size < 2:
@@ -85,7 +104,7 @@ class FLRWExpansion:
             raise ValueError("z must be strictly increasing and non-negative")
 
         e = self.e_of_z(z_arr)
-        chi = cumulative_trapezoid(1.0 / e, z_arr, initial=0.0)
+        chi = np.asarray([self._chi_to_redshift(float(value)) for value in z_arr], dtype=float)
         d_h = C_KM_S / self.p.H0
         ok = self.p.omega_k
         if np.isclose(ok, 0.0):

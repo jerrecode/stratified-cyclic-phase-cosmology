@@ -1,0 +1,51 @@
+schema_version: 1
+id: desi_dr2_2025_bao_bbn_flat_lcdm
+model:
+  family: flat_lcdm
+  omega_k: 0.0
+  w0: -1.0
+  wa: 0.0
+  early_universe:
+    T_cmb_K: 2.7255
+    N_eff: 3.044
+    sum_mnu_eV: 0.06
+  sound_horizon_backend: camb
+bbn_prior:
+  parameter: omega_b_h2
+  mean: 0.02218
+  standard_deviation: 0.00055
+  source: Schoneberg 2024 PRyMordial BBN prior used by DESI DR2
+bao_likelihood:
+  release: DESI DR2 Results I/II 2025 BAO likelihood
+  data_id: desi-bao-all
+  mean_file: data/analysis_ready/desi_dr2_bao/mean.txt
+  covariance_file: data/analysis_ready/desi_dr2_bao/covariance.txt
+  source_repository: https://github.com/CobayaSampler/bao_data
+  source_commit: bb0c1c9009dc76d1391300e169e8df38fd1096db
+  mean_sha256: 9ac154ab583ce759c0f7eef3c978c7c70a6ead2d18774caceadf1a350a640585
+  covariance_sha256: 252a143274c8a07c78694c119617d36594f6d7965d00319ca611c6ffb886e509
+posterior_products:
+  official_root: https://data.desi.lbl.gov/public/papers/y3/bao-cosmo-params/cobaya
+  bao_only: base/desi-bao-all
+  bao_bbn: base/desi-bao-all_schoneberg2024-bbn
+  use: marginalized posterior contours and posterior-predictive histories
+release_overlap_policy:
+  desi_dr1_dr2_independent: false
+  later_2026_lya_update_combined: false
+  rationale: >-
+    The July/August 2026 DESI Lyman-alpha AP+BAO update is not multiplied into this pinned
+    2025 Results I/II likelihood unless an official release-native joint covariance or likelihood
+    supports the combination.
+figure_policy:
+  main_panels:
+    - posterior_omega_m_h_rd_bao_only
+    - posterior_omega_m_H0_bao_plus_bbn
+    - posterior_predictive_low_z_expansion
+    - camb_species_fractions
+  supplementary:
+    - q_and_w_tot
+    - aubourg_vs_camb_sound_horizon
+  epistemic_labels:
+    posterior: data_constrained
+    expansion_history: model_implied
+    high_redshift_history: model_extrapolated_from_calibrated_flat_lcdm
