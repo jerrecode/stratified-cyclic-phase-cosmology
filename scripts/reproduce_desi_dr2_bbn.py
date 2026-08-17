@@ -244,7 +244,7 @@ def _write_latex_tables(report: dict[str, object], output_dir: Path) -> list[Pat
                 r"\toprule",
                 "Diagnostic & Value " + ROW_END,
                 r"\midrule",
-                "Posterior-spanning evaluations & " + str(aubourg["samples"]) + " " + ROW_END,
+                "Posterior-representative CAMB evaluations & " + str(aubourg["samples"]) + " " + ROW_END,
                 "RMS fractional difference & $"
                 + f"{aubourg['rms_fractional_difference']:.3e}"
                 + "$ "
@@ -311,7 +311,7 @@ def main() -> None:
         )
 
     report: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "analysis": "DESI DR2 2025 BAO likelihood + Schoneberg 2024 BBN prior, flat LambdaCDM",
         "epistemic_status": "standard-cosmology reproduction benchmark; not an SCPC observational fit",
         "software_commit": _git_commit(),
@@ -341,8 +341,13 @@ def main() -> None:
         },
         "interpretation": (
             "Upper panels reproduce marginalized DESI posteriors with GetDist. The lower-left panel "
-            "is a full-covariance posterior-predictive BAO check. The lower-right panel is a CAMB "
-            "standard-cosmology background extrapolation. BBN calibrates omega_b h^2, not r_d directly."
+            "propagates the released posterior through exact CAMB BAO predictions and shows Cholesky-"
+            "whitened full-covariance model residuals; its component labels identify row ordering rather "
+            "than one-to-one observables, and the reported posterior-predictive tail probability is a "
+            "Bayesian model-check diagnostic rather than a frequentist goodness-of-fit p-value. The lower-"
+            "right panel propagates posterior uncertainty through the CAMB standard-cosmology background "
+            "and is explicitly a model-derived high-redshift extrapolation. BBN calibrates omega_b h^2, "
+            "not r_d directly."
         ),
     }
     table_paths = _write_latex_tables(report, args.output_dir)
