@@ -11,9 +11,14 @@ on:
       - 'scripts/reproduce_desi_dr2_bbn.py'
       - 'scripts/prefetch_desi_dr2_chains.sh'
       - 'configs/inference/desi_dr2_bbn.yaml'
+      - 'configs/inference/desi_dr2_chain_pins.json'
       - 'data/analysis_ready/desi_dr2_bao/**'
       - 'paper/**'
       - '.github/workflows/desi-inference.yml'
+
+concurrency:
+  group: scpc-publication-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   reproduce:
@@ -36,7 +41,7 @@ jobs:
         run: python -m pip install -e '.[inference]'
       - name: Reproduce baseline, topology, and layered products
         run: python scripts/reproduce.py
-      - name: Prefetch official DESI chains with IPv4 resume
+      - name: Prefetch exact pinned official DESI products
         run: bash scripts/prefetch_desi_dr2_chains.sh
       - name: Reproduce official-chain posterior and convergence products
         run: >-
