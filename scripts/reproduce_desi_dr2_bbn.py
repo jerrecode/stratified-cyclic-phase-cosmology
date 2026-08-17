@@ -22,6 +22,7 @@ from scpc.inference.desi_chains import (
 )
 from scpc.inference.desi_likelihood import DESIDR2BAOLikelihood, fit_flat_lcdm_bbn_map
 from scpc.inference.figures import make_aubourg_validation_figure, make_kinematic_figure, make_main_figure
+from scpc.inference.product_pins import load_product_pin_manifest, verify_dataset_provenance
 
 ROW_END = r"\\"
 
@@ -31,6 +32,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=Path("results/desi_dr2_bbn"))
     parser.add_argument("--chain-cache", type=Path, default=Path("data/external/desi_dr2_cosmology_chains"))
     parser.add_argument("--config", type=Path, default=Path("configs/inference/desi_dr2_bbn.yaml"))
+    parser.add_argument(
+        "--pin-manifest",
+        type=Path,
+        default=Path("configs/inference/desi_dr2_chain_pins.json"),
+        help="Machine-readable exact byte/SHA-256 pins for every external DESI chain product.",
+    )
     parser.add_argument("--download-official-chains", action="store_true")
     parser.add_argument(
         "--burn-fraction",
@@ -286,6 +293,16 @@ def main() -> None:
         max_rminus1=args.max_rminus1,
     )
 
+    pin_manifest = load_product_pin_manifest(args.pin_manifest)
+    pin_verification = {
+        "bao_only": verify_dataset_provenance(pin_manifest, "desi-bao-all", [*bao_prov, *bao_meta]),
+        "bao_bbn": verify_dataset_provenance(
+            pin_manifest,
+            "desi-bao-all_schoneberg2024-bbn",
+            [*bbn_prov, *bbn_meta],
+        ),
+    }
+
     likelihood = DESIDR2BAOLikelihood(
         Path("data/analysis_ready/desi_dr2_bao/mean.txt"),
         Path("data/analysis_ready/desi_dr2_bao/covariance.txt"),
@@ -311,12 +328,15 @@ def main() -> None:
         )
 
     report: dict[str, object] = {
-        "schema_version": 3,
+        "schema_version": 4,
         "analysis": "DESI DR2 2025 BAO likelihood + Schoneberg 2024 BBN prior, flat LambdaCDM",
         "epistemic_status": "standard-cosmology reproduction benchmark; not an SCPC observational fit",
         "software_commit": _git_commit(),
         "inference_config": str(args.config),
         "inference_config_sha256": sha256_file(args.config),
+        "chain_pin_manifest": str(args.pin_manifest),
+        "chain_pin_manifest_sha256": sha256_file(args.pin_manifest),
+        "chain_pin_verification": pin_verification,
         "runtime_versions": _versions(),
         "posterior_source": "Official DESI DR2 released Cobaya MCMC chains, analysed with GetDist",
         "posterior_chain_burn_fraction": {"bao_only": bao_burn, "bao_bbn": bbn_burn},
@@ -340,14 +360,15 @@ def main() -> None:
             "bao_bbn": {"omega_m": [0.2977, 0.0086], "H0": [68.51, 0.58]},
         },
         "interpretation": (
-            "Upper panels reproduce marginalized DESI posteriors with GetDist. The lower-left panel "
-            "propagates the released posterior through exact CAMB BAO predictions and shows Cholesky-"
-            "whitened full-covariance model residuals; its component labels identify row ordering rather "
-            "than one-to-one observables, and the reported posterior-predictive tail probability is a "
-            "Bayesian model-check diagnostic rather than a frequentist goodness-of-fit p-value. The lower-"
-            "right panel propagates posterior uncertainty through the CAMB standard-cosmology background "
-            "and is explicitly a model-derived high-redshift extrapolation. BBN calibrates omega_b h^2, "
-            "not r_d directly."
+            "Upper panels reproduce marginalized DESI posteriors with GetDist. Every external DESI "
+            "sample and release-side metadata file is required to match the declared byte length, source "
+            "URL, and SHA-256 pin before inference. The lower-left panel propagates the released posterior "
+            "through exact CAMB BAO predictions and shows Cholesky-whitened full-covariance model residuals; "
+            "its component labels identify row ordering rather than one-to-one observables, and the reported "
+            "posterior-predictive tail probability is a Bayesian model-check diagnostic rather than a "
+            "frequentist goodness-of-fit p-value. The lower-right panel propagates posterior uncertainty "
+            "through the CAMB standard-cosmology background and is explicitly a model-derived high-redshift "
+            "extrapolation. BBN calibrates omega_b h^2, not r_d directly."
         ),
     }
     table_paths = _write_latex_tables(report, args.output_dir)
