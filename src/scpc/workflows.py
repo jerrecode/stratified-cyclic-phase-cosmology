@@ -98,7 +98,10 @@ def _background_inputs(config: dict[str, Any]) -> tuple[SCPCParameters, dict[str
     return parameters, options
 
 
-def _turning_feasibility(parameters: SCPCParameters, integration_options: dict[str, Any]) -> dict[str, object]:
+def _turning_feasibility(
+    parameters: SCPCParameters,
+    integration_options: dict[str, Any],
+) -> dict[str, object]:
     return turning_feasibility_certificate(
         parameters,
         a0=float(integration_options["a0"]),
@@ -121,7 +124,9 @@ def compare_models(config_path: str | Path, output_dir: str | Path) -> Path:
         table = FLRWExpansion(params).distance_table(z)
         tables[model["label"]] = table
         for i in range(z.size):
-            rows.append({"model": model["id"], **{key: float(value[i]) for key, value in table.items()}})
+            rows.append(
+                {"model": model["id"], **{key: float(value[i]) for key, value in table.items()}}
+            )
 
     csv_path = output / "background_comparison.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
@@ -276,6 +281,40 @@ def verify_scpc_background(config_path: str | Path, output_dir: str | Path) -> P
     return report_path
 
 
+def _analytic_candidate_exclusion_report(
+    feasibility: dict[str, object],
+    acceptance: dict[str, Any],
+) -> dict[str, object]:
+    reason = feasibility.get("exclusion_reason")
+    return {
+        "schema_version": 1,
+        "status": "analytically_excluded_future_turnaround",
+        "candidate_gate_passed": False,
+        "stage2_input_eligible": False,
+        "scientific_scope": (
+            "homogeneous analytic recurrence preflight; exclusion of a future regular turnaround "
+            "on the declared branch, not a statement about every SCPC parameter point"
+        ),
+        "reference_label": None,
+        "reference_close_return_kinds": [],
+        "common_reproduced_close_return_kinds": [],
+        "reasons": [str(reason or "future regular turnaround is analytically excluded")],
+        "thresholds": {
+            "max_constraint_residual": float(acceptance["max_constraint_residual"]),
+            "max_solution_error": float(acceptance["max_solution_error"]),
+            "max_event_time_error": float(acceptance["max_event_time_error"]),
+            "max_event_state_error": float(acceptance["max_event_state_error"]),
+            "max_return_error": float(acceptance["max_return_error"]),
+            "minimum_same_kind_return_metrics": int(
+                acceptance["minimum_same_kind_return_metrics"]
+            ),
+        },
+        "runs": {},
+        "comparisons_to_reference": {},
+        "analytic_preflight_short_circuit": True,
+    }
+
+
 def audit_scpc_candidate(config_path: str | Path, output_dir: str | Path) -> Path:
     """Run the non-promotional Stage-1 recurrence-candidate verification gate."""
 
@@ -283,6 +322,7 @@ def audit_scpc_candidate(config_path: str | Path, output_dir: str | Path) -> Pat
     baseline_path = Path(config["baseline_config"])
     baseline = _load_yaml(baseline_path)
     parameters, integration_options = _background_inputs(baseline)
+    feasibility = _turning_feasibility(parameters, integration_options)
 
     tolerance_levels = tuple(
         (
@@ -294,44 +334,52 @@ def audit_scpc_candidate(config_path: str | Path, output_dir: str | Path) -> Pat
     )
     independent = config["independent_solver"]
     acceptance = config["acceptance"]
-    report = verify_recurrence_candidate(
-        parameters,
-        integration_options=integration_options,
-        tolerance_levels=tolerance_levels,
-        primary_method=str(config["primary_method"]),
-        independent_method=str(independent["method"]),
-        independent_rtol=_positive_finite_float(independent["rtol"], "independent_solver.rtol"),
-        independent_atol=_positive_finite_float(independent["atol"], "independent_solver.atol"),
-        max_constraint_residual=_positive_finite_float(
-            acceptance["max_constraint_residual"], "acceptance.max_constraint_residual"
-        ),
-        max_solution_error=_positive_finite_float(
-            acceptance["max_solution_error"], "acceptance.max_solution_error"
-        ),
-        max_event_time_error=_positive_finite_float(
-            acceptance["max_event_time_error"], "acceptance.max_event_time_error"
-        ),
-        max_event_state_error=_positive_finite_float(
-            acceptance["max_event_state_error"], "acceptance.max_event_state_error"
-        ),
-        max_return_error=_positive_finite_float(
-            acceptance["max_return_error"], "acceptance.max_return_error"
-        ),
-        minimum_same_kind_return_metrics=_strict_int(
-            acceptance["minimum_same_kind_return_metrics"],
-            "acceptance.minimum_same_kind_return_metrics",
-            minimum=2,
-        ),
-    )
+
+    if bool(feasibility["future_turnaround_excluded"]):
+        report = _analytic_candidate_exclusion_report(feasibility, acceptance)
+    else:
+        report = verify_recurrence_candidate(
+            parameters,
+            integration_options=integration_options,
+            tolerance_levels=tolerance_levels,
+            primary_method=str(config["primary_method"]),
+            independent_method=str(independent["method"]),
+            independent_rtol=_positive_finite_float(
+                independent["rtol"], "independent_solver.rtol"
+            ),
+            independent_atol=_positive_finite_float(
+                independent["atol"], "independent_solver.atol"
+            ),
+            max_constraint_residual=_positive_finite_float(
+                acceptance["max_constraint_residual"],
+                "acceptance.max_constraint_residual",
+            ),
+            max_solution_error=_positive_finite_float(
+                acceptance["max_solution_error"], "acceptance.max_solution_error"
+            ),
+            max_event_time_error=_positive_finite_float(
+                acceptance["max_event_time_error"], "acceptance.max_event_time_error"
+            ),
+            max_event_state_error=_positive_finite_float(
+                acceptance["max_event_state_error"], "acceptance.max_event_state_error"
+            ),
+            max_return_error=_positive_finite_float(
+                acceptance["max_return_error"], "acceptance.max_return_error"
+            ),
+            minimum_same_kind_return_metrics=_strict_int(
+                acceptance["minimum_same_kind_return_metrics"],
+                "acceptance.minimum_same_kind_return_metrics",
+                minimum=2,
+            ),
+        )
+
     report.update(
         {
             "verification_config": str(config_path),
             "verification_config_sha256": sha256_file(config_path),
             "baseline_config": str(baseline_path),
             "baseline_config_sha256": sha256_file(baseline_path),
-            "turning_feasibility_certificate": _turning_feasibility(
-                parameters, integration_options
-            ),
+            "turning_feasibility_certificate": feasibility,
         }
     )
 
