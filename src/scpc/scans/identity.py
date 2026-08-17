@@ -51,6 +51,7 @@ _EXECUTION_TYPES: dict[str, type] = {
     "run.domain.max_abs_ricci_scalar": float,
     "run.domain.max_abs_field": float,
     "run.domain.max_abs_field_velocity": float,
+    "run.resource_limits.max_rhs_evaluations": int,
 }
 
 
@@ -122,12 +123,29 @@ def normalize_background_specification(specification: dict[str, Any]) -> dict[st
         _set_existing_path(normalized, path, _execution_cast(path, value, expected))
 
     run = normalized.get("run")
-    if isinstance(run, dict) and "domain" in run:
-        domain = run["domain"]
-        if domain is None or domain == {}:
-            run.pop("domain")
-        elif not isinstance(domain, dict):
-            raise ValueError("run.domain must be a mapping when configured")
+    if isinstance(run, dict):
+        if "domain" in run:
+            domain = run["domain"]
+            if domain is None or domain == {}:
+                run.pop("domain")
+            elif not isinstance(domain, dict):
+                raise ValueError("run.domain must be a mapping when configured")
+        if "resource_limits" in run:
+            resource_limits = run["resource_limits"]
+            if resource_limits is None or resource_limits == {}:
+                run.pop("resource_limits")
+            elif not isinstance(resource_limits, dict):
+                raise ValueError("run.resource_limits must be a mapping when configured")
+            else:
+                expected = {"max_rhs_evaluations"}
+                if set(resource_limits) != expected:
+                    raise ValueError(
+                        "run.resource_limits must contain exactly max_rhs_evaluations"
+                    )
+                if resource_limits["max_rhs_evaluations"] <= 0:
+                    raise ValueError(
+                        "run.resource_limits.max_rhs_evaluations must be positive"
+                    )
     return normalized
 
 

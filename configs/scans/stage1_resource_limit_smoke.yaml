@@ -1,0 +1,11 @@
+schema_version: 1
+description: One-run CI proof that deterministic resource exhaustion is preserved as a failure record.
+base_config: stage1_resource_limit_smoke_base.yaml
+max_runs: 1
+resume: true
+axes: {}
+retention:
+  outcomes: []
+  max_trajectories: 0
+notes:
+  - Resource exhaustion is computational evidence only, never a physical-domain endpoint.

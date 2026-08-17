@@ -88,6 +88,17 @@ def _integrate_point(point: ScanPoint):
             raise ValueError(
                 "run.domain_check_substeps is required when run.domain configures boundaries"
             )
+    resource_config = run.get("resource_limits")
+    if resource_config is None:
+        max_rhs_evaluations = None
+    elif not isinstance(resource_config, dict):
+        raise TypeError("run.resource_limits must be a mapping when configured")
+    elif set(resource_config) != {"max_rhs_evaluations"}:
+        raise ValueError(
+            "run.resource_limits must contain exactly max_rhs_evaluations"
+        )
+    else:
+        max_rhs_evaluations = int(resource_config["max_rhs_evaluations"])
     return integrate_scpc(
         parameters,
         t_span=(float(run["t_start"]), float(run["t_end"])),
@@ -102,6 +113,7 @@ def _integrate_point(point: ScanPoint):
         domain=domain,
         max_step=float(run["max_step"]) if "max_step" in run else None,
         domain_check_substeps=int(run.get("domain_check_substeps", 16)),
+        max_rhs_evaluations=max_rhs_evaluations,
     )
 
 
@@ -265,8 +277,13 @@ def run_background_scan(
 
     strict_fingerprint, complete_fingerprint = _strict_fingerprint()
     planned_hashes = [point.identity.sha256 for point in points]
+    resource_limits_by_run = {
+        point.identity.run_id: dict(point.specification["run"]["resource_limits"])
+        for point in points
+        if point.specification["run"].get("resource_limits")
+    }
     metadata = {
-        "metadata_schema_version": 2,
+        "metadata_schema_version": 3,
         "scan_schema_version": 1,
         "scan_schema_reference": schema_file.name,
         "scan_schema_sha256": sha256_file(schema_file),
@@ -276,6 +293,7 @@ def run_background_scan(
         "base_config_sha256": sha256_file(base_path),
         "implementation_runtime_fingerprint": strict_fingerprint,
         "planned_run_sha256": planned_hashes,
+        "resource_limits_by_run": resource_limits_by_run,
     }
     if metadata_path.exists():
         existing_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -447,7 +465,8 @@ def run_background_scan(
             "base_config": str(base_path),
             "base_config_sha256": sha256_file(base_path),
             "implementation_runtime_fingerprint": complete_fingerprint,
-            "recovered_unreferenced_files": removed_recovery_files,
+        "resource_limits_by_run": resource_limits_by_run,
+        "recovered_unreferenced_files": removed_recovery_files,
             "independently_reintegrated_termination_run_ids": sorted(
                 independently_reintegrated_termination_run_ids
             ),

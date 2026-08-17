@@ -94,7 +94,8 @@ def test_resume_metadata_contains_strict_implementation_runtime_fingerprint(tmp_
 
     metadata = json.loads((output / "scan_metadata.json").read_text(encoding="utf-8"))
     fingerprint = metadata["implementation_runtime_fingerprint"]
-    assert metadata["metadata_schema_version"] == 2
+    assert metadata["metadata_schema_version"] == 3
+    assert metadata["resource_limits_by_run"] == {}
     assert len(fingerprint["source_tree_sha256"]) == 64
     assert len(fingerprint["strict_sha256"]) == 64
     assert fingerprint["python_version"]

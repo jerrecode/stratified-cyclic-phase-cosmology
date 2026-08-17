@@ -92,6 +92,122 @@ def _finite_float(row: dict[str, Any], key: str, run_id: str, *, positive: bool 
     return value
 
 
+
+
+_RESOURCE_ROW_FIELDS = (
+    "resource_limit_kind",
+    "resource_limit_configured",
+    "resource_completed_count",
+    "resource_attempted_count",
+    "resource_evaluation_time",
+    "diagnostic_rhs_evaluations",
+)
+
+
+def _planned_rhs_limit(point: ScanPoint) -> int | None:
+    raw = point.specification["run"].get("resource_limits")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) != {"max_rhs_evaluations"}:
+        raise ValueError(f"Invalid planned resource limits for {point.identity.run_id}")
+    value = raw["max_rhs_evaluations"]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"Invalid planned RHS ceiling for {point.identity.run_id}")
+    return value
+
+
+def _validate_resource_limit_row(row: dict[str, Any], point: ScanPoint) -> None:
+    run_id = point.identity.run_id
+    is_resource_failure = row.get("failure_class", "") == "resource_limit_exceeded"
+    populated = [key for key in _RESOURCE_ROW_FIELDS if row.get(key, "") != ""]
+    if not is_resource_failure:
+        if populated:
+            raise ValueError(
+                f"Non-resource existing row {run_id} contains resource-limit evidence"
+            )
+        return
+    if set(populated) != set(_RESOURCE_ROW_FIELDS):
+        raise ValueError(f"Resource-limited existing row {run_id} has partial evidence")
+    if row.get("status") != "failed":
+        raise ValueError(f"Resource-limited existing row {run_id} must be failed")
+    if row.get("outcome", ""):
+        raise ValueError(f"Resource-limited existing row {run_id} cannot have an outcome")
+    if row.get("trajectory_path", ""):
+        raise ValueError(
+            f"Resource-limited existing row {run_id} cannot retain a trajectory"
+        )
+    if _boolean_field(row, "numerically_valid", run_id) is not False:
+        raise ValueError(
+            f"Resource-limited existing row {run_id} must be numerically invalid"
+        )
+    if _boolean_field(row, "completed_to_requested_end", run_id) is not False:
+        raise ValueError(
+            f"Resource-limited existing row {run_id} cannot be endpoint-complete"
+        )
+    if row["resource_limit_kind"] != "max_rhs_evaluations":
+        raise ValueError(f"Unknown resource-limit kind in existing row {run_id}")
+
+    planned = _planned_rhs_limit(point)
+    if planned is None:
+        raise ValueError(f"Resource-limited existing row {run_id} has no planned ceiling")
+    configured = _integer_field(row, "resource_limit_configured", run_id)
+    completed = _integer_field(row, "resource_completed_count", run_id)
+    attempted = _integer_field(row, "resource_attempted_count", run_id)
+    diagnostic = _integer_field(row, "diagnostic_rhs_evaluations", run_id)
+    evaluation_time = _finite_float(row, "resource_evaluation_time", run_id)
+    if configured <= 0 or configured != planned:
+        raise ValueError(f"Resource ceiling mismatch in existing row {run_id}")
+    if completed != configured or attempted != completed + 1:
+        raise ValueError(f"Resource counter mismatch in existing row {run_id}")
+    if diagnostic < 0:
+        raise ValueError(f"Negative diagnostic count in existing row {run_id}")
+
+    run = point.specification["run"]
+    t_start = float(run["t_start"])
+    t_end = float(run["t_end"])
+    slack = 64.0 * np.finfo(float).eps * max(
+        1.0, abs(t_start), abs(t_end), abs(evaluation_time)
+    )
+    if (
+        evaluation_time < min(t_start, t_end) - slack
+        or evaluation_time > max(t_start, t_end) + slack
+    ):
+        raise ValueError(
+            f"Resource evaluation time lies outside the planned interval for row {run_id}"
+        )
+    if _json_field(row, "solver_metadata", run_id) is not None:
+        raise ValueError(
+            f"Resource-limited existing row {run_id} must not claim solver completion metadata"
+        )
+
+
+def _validate_solver_resource_accounting(row: dict[str, Any], point: ScanPoint) -> None:
+    if row.get("status") == "failed":
+        return
+    run_id = point.identity.run_id
+    metadata = _json_field(row, "solver_metadata", run_id)
+    if not isinstance(metadata, dict):
+        raise ValueError(f"Existing completed/rejected row {run_id} requires solver metadata")
+    planned = _planned_rhs_limit(point)
+    expected_limit: int | str = planned if planned is not None else "unbounded"
+    if metadata.get("rhs_evaluation_limit") != expected_limit:
+        raise ValueError(f"RHS resource-limit metadata mismatch in existing row {run_id}")
+    try:
+        solver_nfev = int(metadata["solver_nfev"])
+        consumed = int(metadata["rhs_evaluations_consumed"])
+        diagnostic = int(metadata["diagnostic_rhs_evaluations"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            f"Incomplete RHS accounting metadata in existing row {run_id}"
+        ) from error
+    if solver_nfev < 0 or consumed < 0 or diagnostic < 0:
+        raise ValueError(f"Negative RHS accounting in existing row {run_id}")
+    if consumed != solver_nfev:
+        raise ValueError(f"RHS counter disagrees with solver nfev in existing row {run_id}")
+    if planned is not None and consumed > planned:
+        raise ValueError(f"Successful row {run_id} exceeded its declared RHS ceiling")
+
+
 def _domain_tolerance(rtol: float, atol: float, scale: float) -> float:
     magnitude = abs(float(scale))
     roundoff = 64.0 * np.finfo(float).eps * max(magnitude, np.finfo(float).tiny)
@@ -540,6 +656,8 @@ def load_existing_scan_rows(
         if specification != point.specification:
             raise ValueError(f"Run-specification mismatch for existing row {run_id}")
 
+        _validate_resource_limit_row(row, point)
+        _validate_solver_resource_accounting(row, point)
         _validate_termination_row(
             row,
             point,

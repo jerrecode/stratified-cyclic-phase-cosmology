@@ -86,6 +86,9 @@ def test_dense_termination_discards_later_solver_turning_event(monkeypatch) -> N
         )
 
     def fake_solve_ivp(*_args, **_kwargs):
+        solver_rhs = _args[0]
+        for _ in range(8):
+            solver_rhs(0.0, np.asarray([1.0, 0.0, 0.0, 0.0]))
         return SimpleNamespace(
             success=True,
             message="success",
@@ -147,6 +150,9 @@ def test_roundoff_late_turning_event_is_clamped_to_dense_endpoint(monkeypatch) -
         )
 
     def fake_solve_ivp(*_args, **_kwargs):
+        solver_rhs = _args[0]
+        for _ in range(8):
+            solver_rhs(0.0, np.asarray([1.0, 0.0, 0.0, 0.0]))
         return SimpleNamespace(
             success=True,
             message="success",

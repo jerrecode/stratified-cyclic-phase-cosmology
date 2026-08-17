@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from scpc.models.phase import SCPCSolution
+from scpc.models.phase import ComputationalResourceLimitExceeded, SCPCSolution
 from scpc.scans.errors import OutputSerializationError, ResultIntegrityError, ScanConfigurationError
 from scpc.scans.identity import RunIdentity
 from scpc.scans.outcomes import OutcomeAssessment
@@ -24,6 +24,7 @@ class FailureClass(StrEnum):
     INVALID_INITIAL_CONSTRAINT = "invalid_initial_constraint"
     CONFIGURATION_ERROR = "configuration_error"
     PHYSICAL_DOMAIN_FAILURE = "physical_domain_failure"
+    RESOURCE_LIMIT_EXCEEDED = "resource_limit_exceeded"
     SOLVER_FAILURE = "solver_failure"
     RESULT_INTEGRITY_ERROR = "result_integrity_error"
     OUTPUT_ERROR = "output_error"
@@ -62,6 +63,12 @@ class RunRecord:
     termination_record_path: str | None = None
     termination_record_sha256: str | None = None
     solver_metadata: dict[str, Any] | None = None
+    resource_limit_kind: str | None = None
+    resource_limit_configured: int | None = None
+    resource_completed_count: int | None = None
+    resource_attempted_count: int | None = None
+    resource_evaluation_time: float | None = None
+    diagnostic_rhs_evaluations: int | None = None
     trajectory_path: str | None = None
 
     def to_mapping(self) -> dict[str, Any]:
@@ -170,6 +177,8 @@ def completed_run_record(
 
 def classify_exception(error: Exception) -> FailureClass:
     message = str(error).lower()
+    if isinstance(error, ComputationalResourceLimitExceeded):
+        return FailureClass.RESOURCE_LIMIT_EXCEEDED
     if isinstance(error, ScanConfigurationError):
         return FailureClass.CONFIGURATION_ERROR
     if isinstance(error, ResultIntegrityError):
@@ -195,16 +204,32 @@ def failed_run_record(
     coordinates: dict[str, Any] | None = None,
 ) -> RunRecord:
     failure_class = classify_exception(error)
+    resource_fields: dict[str, Any] = {}
+    reason = "The numerical experiment did not return a completed trajectory."
+    if isinstance(error, ComputationalResourceLimitExceeded):
+        reason = (
+            "The declared deterministic computational budget was exhausted before "
+            "the numerical experiment returned a completed trajectory."
+        )
+        resource_fields = {
+            "resource_limit_kind": error.limit_kind,
+            "resource_limit_configured": error.configured_limit,
+            "resource_completed_count": error.completed_count,
+            "resource_attempted_count": error.attempted_count,
+            "resource_evaluation_time": error.evaluation_time,
+            "diagnostic_rhs_evaluations": error.diagnostic_rhs_evaluations,
+        }
     return RunRecord(
         run_id=identity.run_id,
         run_sha256=identity.sha256,
         status=RunStatus.FAILED,
         coordinates=dict(coordinates or {}),
         specification=specification,
-        reason="The numerical experiment did not return a completed trajectory.",
+        reason=reason,
         numerically_valid=False,
         failure_class=failure_class,
         exception_type=type(error).__name__,
         exception_message=str(error),
         completed_to_requested_end=False,
+        **resource_fields,
     )

@@ -31,6 +31,39 @@ DOMAIN_TERMINATION_KIND_CODES = {
 }
 
 
+class ComputationalResourceLimitExceeded(RuntimeError):
+    """A deterministic solver-work budget was exhausted before trajectory completion.
+
+    This is a computational experiment outcome, not a physical-domain surface,
+    solver pathology, singularity claim, or accepted physical endpoint. The
+    attempted state is deliberately not retained.
+    """
+
+    limit_kind = "max_rhs_evaluations"
+
+    def __init__(
+        self,
+        *,
+        configured_limit: int,
+        completed_count: int,
+        attempted_count: int,
+        evaluation_time: float,
+        diagnostic_rhs_evaluations: int,
+    ) -> None:
+        self.configured_limit = int(configured_limit)
+        self.completed_count = int(completed_count)
+        self.attempted_count = int(attempted_count)
+        self.evaluation_time = float(evaluation_time)
+        self.diagnostic_rhs_evaluations = int(diagnostic_rhs_evaluations)
+        super().__init__(
+            "Computational resource limit max_rhs_evaluations exceeded: "
+            f"configured_limit={self.configured_limit}, "
+            f"completed_count={self.completed_count}, "
+            f"attempted_count={self.attempted_count}, "
+            f"evaluation_time={self.evaluation_time:.17g}"
+        )
+
+
 @dataclass(frozen=True)
 class PeriodicPotential:
     """Periodic scalar potential with an explicitly declared target-space topology."""
@@ -403,9 +436,13 @@ def _total_density(state: np.ndarray, parameters: SCPCParameters) -> float:
     return float(rho_m + rho_r + rho_phi)
 
 
-def _ricci_scalar(state: np.ndarray, parameters: SCPCParameters) -> float:
+def _ricci_scalar(
+    state: np.ndarray,
+    parameters: SCPCParameters,
+    rhs_evaluator: Callable[[float, np.ndarray, SCPCParameters], np.ndarray] = _rhs,
+) -> float:
     a, H, _phi, _v = state
-    hdot = float(_rhs(0.0, state, parameters)[1])
+    hdot = float(rhs_evaluator(0.0, state, parameters)[1])
     return float(6.0 * (hdot + 2.0 * H**2 + parameters.spatial_curvature_k / a**2))
 
 
@@ -443,6 +480,8 @@ class _DomainEventDefinition:
 def _domain_event_definitions(
     domain: SCPCIntegrationDomain,
     parameters: SCPCParameters,
+    *,
+    rhs_evaluator: Callable[[float, np.ndarray, SCPCParameters], np.ndarray] = _rhs,
 ) -> tuple[_DomainEventDefinition, ...]:
     domain.validate_for(parameters)
     definitions: list[_DomainEventDefinition] = []
@@ -497,8 +536,11 @@ def _domain_event_definitions(
         "maximum_absolute_ricci_scalar",
         domain.max_abs_ricci_scalar,
         "M_pl^2",
-        lambda state: abs(_ricci_scalar(state, parameters)),
-        lambda state: float(domain.max_abs_ricci_scalar - abs(_ricci_scalar(state, parameters))),
+        lambda state: abs(_ricci_scalar(state, parameters, rhs_evaluator)),
+        lambda state: float(
+            domain.max_abs_ricci_scalar
+            - abs(_ricci_scalar(state, parameters, rhs_evaluator))
+        ),
     )
     add(
         "maximum_absolute_field",
@@ -621,6 +663,22 @@ def _evaluation_grid(
     return np.concatenate((before, np.asarray([end_time])))
 
 
+def _validated_max_rhs_evaluations(value: int | float | None) -> int | None:
+    """Normalize one deterministic RHS-evaluation ceiling for direct API callers."""
+
+    if value is None:
+        return None
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError("max_rhs_evaluations must be a positive integer, not boolean")
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ValueError("max_rhs_evaluations must be a positive integer") from error
+    if not np.isfinite(number) or not number.is_integer() or number <= 0.0:
+        raise ValueError("max_rhs_evaluations must be a finite positive integer")
+    return int(number)
+
+
 def integrate_scpc(
     parameters: SCPCParameters,
     *,
@@ -636,6 +694,7 @@ def integrate_scpc(
     domain: SCPCIntegrationDomain | None = None,
     max_step: float | None = None,
     domain_check_substeps: int = 16,
+    max_rhs_evaluations: int | float | None = None,
 ) -> SCPCSolution:
     """Integrate the homogeneous baseline with turning and checked domain events."""
 
@@ -643,7 +702,28 @@ def integrate_scpc(
         raise ValueError("samples must be at least 2")
     if domain_check_substeps < 2 or isinstance(domain_check_substeps, bool):
         raise ValueError("domain_check_substeps must be an integer of at least 2")
-    definitions = _domain_event_definitions(domain, parameters) if domain is not None else ()
+    rhs_limit = _validated_max_rhs_evaluations(max_rhs_evaluations)
+    rhs_evaluations_completed = 0
+    diagnostic_rhs_evaluations = 0
+
+    def diagnostic_rhs(
+        time: float,
+        state: np.ndarray,
+        diagnostic_parameters: SCPCParameters,
+    ) -> np.ndarray:
+        nonlocal diagnostic_rhs_evaluations
+        diagnostic_rhs_evaluations += 1
+        return _rhs(time, state, diagnostic_parameters)
+
+    definitions = (
+        _domain_event_definitions(
+            domain,
+            parameters,
+            rhs_evaluator=diagnostic_rhs,
+        )
+        if domain is not None
+        else ()
+    )
     if definitions:
         if max_step is None or not np.isfinite(max_step) or max_step <= 0.0:
             raise ValueError(
@@ -675,8 +755,23 @@ def integrate_scpc(
             )
     events = [turning_event, *[_make_terminal_event(definition) for definition in definitions]]
 
+    def solver_rhs(time: float, state: np.ndarray) -> np.ndarray:
+        nonlocal rhs_evaluations_completed
+        attempted_count = rhs_evaluations_completed + 1
+        if rhs_limit is not None and attempted_count > rhs_limit:
+            raise ComputationalResourceLimitExceeded(
+                configured_limit=rhs_limit,
+                completed_count=rhs_evaluations_completed,
+                attempted_count=attempted_count,
+                evaluation_time=float(time),
+                diagnostic_rhs_evaluations=diagnostic_rhs_evaluations,
+            )
+        value = _rhs(time, state, parameters)
+        rhs_evaluations_completed += 1
+        return value
+
     sol = solve_ivp(
-        lambda t, y: _rhs(t, y, parameters),
+        solver_rhs,
         t_span,
         initial_state,
         method=method,
@@ -686,6 +781,11 @@ def integrate_scpc(
         dense_output=True,
         max_step=solver_max_step,
     )
+    if rhs_evaluations_completed != int(sol.nfev):
+        raise RuntimeError(
+            "Background integration RHS accounting mismatch: "
+            f"counter={rhs_evaluations_completed}, solver_nfev={int(sol.nfev)}"
+        )
     if not sol.success:
         raise RuntimeError(f"Background integration failed: {sol.message}")
     if sol.sol is None:
@@ -770,7 +870,7 @@ def integrate_scpc(
 
     kinds: list[str] = []
     for event_time, state in zip(event_times, event_states, strict=True):
-        hdot = _rhs(float(event_time), state, parameters)[1]
+        hdot = diagnostic_rhs(float(event_time), state, parameters)[1]
         kinds.append("bounce" if hdot > 0 else "turnaround" if hdot < 0 else "degenerate")
 
     return SCPCSolution(
@@ -792,7 +892,10 @@ def integrate_scpc(
             "solver_rtol": rtol,
             "solver_atol": atol,
             "solver_nfev": int(sol.nfev),
-            "solver_status": int(sol.status),
+        "rhs_evaluations_consumed": int(rhs_evaluations_completed),
+        "diagnostic_rhs_evaluations": int(diagnostic_rhs_evaluations),
+        "rhs_evaluation_limit": rhs_limit if rhs_limit is not None else "unbounded",
+        "solver_status": int(sol.status),
             "solver_max_step": solver_max_step if np.isfinite(solver_max_step) else "unbounded",
             "domain_check_substeps": int(domain_check_substeps),
             "requested_end_time": float(t_span[1]),
