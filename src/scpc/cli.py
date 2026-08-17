@@ -8,7 +8,13 @@ from pathlib import Path
 
 from scpc.data.manifest import select_products, validate_manifest
 from scpc.scans.runner import run_background_scan
-from scpc.workflows import compare_models, run_scpc_background, verify_scpc_background
+from scpc.scientific_gates import load_and_validate_gate_ledger
+from scpc.workflows import (
+    audit_scpc_candidate,
+    compare_models,
+    run_scpc_background,
+    verify_scpc_background,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,6 +24,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate = sub.add_parser("validate-manifest", help="Validate data/releases.yaml")
     validate.add_argument("--manifest", default="data/releases.yaml")
     validate.add_argument("--schema", default="data/manifest.schema.json")
+
+    validate_gates = sub.add_parser(
+        "validate-gates",
+        help="Validate dependency ordering and claim status in the scientific gate ledger",
+    )
+    validate_gates.add_argument("--ledger", default="configs/scientific_gates.yaml")
 
     list_data = sub.add_parser("list-data", help="List manifest products")
     list_data.add_argument("--manifest", default="data/releases.yaml")
@@ -40,6 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--config", default="configs/scpc_verification.yaml")
     verify.add_argument("--output", default="results/scpc_verification")
 
+    candidate = sub.add_parser(
+        "audit-candidate",
+        help=(
+            "Run the Stage 1 recurrence-candidate gate. A clean negative result is successful "
+            "execution and does not make CI fail."
+        ),
+    )
+    candidate.add_argument("--config", default="configs/scpc_candidate_verification.yaml")
+    candidate.add_argument("--output", default="results/scpc_candidate_verification")
+
     scan = sub.add_parser(
         "scan-background",
         help="Run or resume a deterministic failure-preserving background parameter scan",
@@ -55,6 +77,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate-manifest":
         manifest = validate_manifest(args.manifest, args.schema)
         print(f"valid: {len(manifest['releases'])} releases")
+    elif args.command == "validate-gates":
+        ledger = load_and_validate_gate_ledger(args.ledger)
+        print(
+            "valid: "
+            f"{ledger['gate_count']} gates; "
+            f"passed={len(ledger['passed_gates'])}, "
+            f"open={len(ledger['open_gates'])}, "
+            f"blocked={len(ledger['blocked_gates'])}"
+        )
     elif args.command == "list-data":
         manifest = validate_manifest(args.manifest)
         for product in select_products(
@@ -73,6 +104,14 @@ def main(argv: list[str] | None = None) -> int:
         print(report_path)
         report = json.loads(Path(report_path).read_text(encoding="utf-8"))
         return 0 if report["passed"] else 2
+    elif args.command == "audit-candidate":
+        report_path = audit_scpc_candidate(args.config, args.output)
+        report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+        print(report_path)
+        print(f"candidate status: {report['status']}")
+        # This command audits a hypothesis. A scientifically valid negative result
+        # is successful execution, so candidate_gate_passed intentionally does not
+        # control the process exit code.
     elif args.command == "scan-background":
         print(run_background_scan(args.config, args.output, schema_path=args.schema))
     else:  # pragma: no cover
