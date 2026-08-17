@@ -1,0 +1,40 @@
+name: Temporary issue-sweep script debug 2
+
+on:
+  push:
+    branches:
+      - work/issue-sweep-2026-08-17
+    paths:
+      - .github/workflows/issue-sweep-script-debug2.yml
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/issue-sweep-2026-08-17
+      - name: Replay corrected patch script with tracing
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/issue-sweep-patcher.yml').read_text(encoding='utf-8')
+          marker = "          python - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY\n", start)
+          script = textwrap.dedent(workflow[start:end])
+          needle = "    count = text.count(old)\n"
+          replacement = (
+              "    if path == 'src/scpc/models/phase.py' and 'solver_nfev' in old and 'solver_status' in old:\n"
+              "        old = old.replace('\\n        \\\"solver_status\\\"', '\\n            \\\"solver_status\\\"')\n"
+              "    count = text.count(old)\n"
+              "    print(f'TRACE {path}: count={count}; target={old[:120]!r}')\n"
+          )
+          if script.count(needle) != 1:
+              raise RuntimeError('Could not instrument replace_once exactly once')
+          script = script.replace(needle, replacement, 1)
+          exec(compile(script, '<issue-sweep-patcher-debug2>', 'exec'), {'__name__': '__main__'})
+          PY
