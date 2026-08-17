@@ -1,0 +1,47 @@
+name: Phase lint fix
+
+on:
+  push:
+    branches:
+      - science/manuscript-rigor-20260817
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: science/manuscript-rigor-20260817
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply targeted fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/scpc/models/phase.py')
+          text = path.read_text()
+          old_lambda = 'lambda time: definition.residual(\n                                np.asarray(dense_solution(time), dtype=float)\n                            ),'
+          new_lambda = 'lambda time, definition=definition: definition.residual(\n                                np.asarray(dense_solution(time), dtype=float)\n                            ),'
+          if old_lambda not in text:
+              raise SystemExit('expected closure pattern not found')
+          text = text.replace(old_lambda, new_lambda, 1)
+          old_reported = '    reported = min(reported_candidates, key=lambda candidate: (candidate[0], candidate[1])) if reported_candidates else None\n'
+          new_reported = '''    reported = (\n        min(reported_candidates, key=lambda candidate: (candidate[0], candidate[1]))\n        if reported_candidates\n        else None\n    )\n'''
+          if old_reported not in text:
+              raise SystemExit('expected reported-candidate pattern not found')
+          path.write_text(text.replace(old_reported, new_reported, 1))
+          PY
+          python -m pip install 'ruff==0.16.3'
+          ruff check src tests scripts
+      - name: Commit fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/scpc/models/phase.py
+          git commit -m 'bind domain-event closure and wrap selection expression'
+          git push origin HEAD:science/manuscript-rigor-20260817
