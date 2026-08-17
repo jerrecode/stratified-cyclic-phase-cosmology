@@ -26,6 +26,7 @@ from scpc.numerics.provenance import (
     write_provenance,
 )
 from scpc.numerics.turning_audit import audit_turning_points
+from scpc.numerics.turning_feasibility import turning_feasibility_certificate
 from scpc.visualization.backgrounds import plot_expansion_comparison, plot_scpc_background
 
 
@@ -97,6 +98,16 @@ def _background_inputs(config: dict[str, Any]) -> tuple[SCPCParameters, dict[str
     return parameters, options
 
 
+def _turning_feasibility(parameters: SCPCParameters, integration_options: dict[str, Any]) -> dict[str, object]:
+    return turning_feasibility_certificate(
+        parameters,
+        a0=float(integration_options["a0"]),
+        phi0=float(integration_options["phi0"]),
+        phi_dot0=float(integration_options["phi_dot0"]),
+        branch=int(integration_options["branch"]),
+    ).to_dict()
+
+
 def compare_models(config_path: str | Path, output_dir: str | Path) -> Path:
     config = _load_yaml(config_path)
     output = Path(output_dir)
@@ -133,6 +144,7 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     parameters, integration_options = _background_inputs(config)
+    feasibility = _turning_feasibility(parameters, integration_options)
     run = config["run"]
     solution = integrate_scpc(
         parameters,
@@ -157,6 +169,7 @@ def run_scpc_background(config_path: str | Path, output_dir: str | Path) -> Path
         "max_abs_friedmann_constraint_residual": float(
             np.max(np.abs(solution.constraint_residual))
         ),
+        "turning_feasibility_certificate": feasibility,
         "turning_times": solution.turning_times.tolist(),
         "turning_kinds": list(solution.turning_kinds),
         "turning_point_physics_audit": [item.to_dict() for item in turning_audit],
@@ -239,6 +252,7 @@ def verify_scpc_background(config_path: str | Path, output_dir: str | Path) -> P
         "verification_config_sha256": sha256_file(config_path),
         "baseline_config": str(baseline_path),
         "baseline_config_sha256": sha256_file(baseline_path),
+        "turning_feasibility_certificate": _turning_feasibility(parameters, integration_options),
         "tolerance_ladder": [asdict(result) for result in ladder],
         "cross_solver": [asdict(result) for result in solver_results],
         "acceptance": acceptance,
@@ -315,6 +329,9 @@ def audit_scpc_candidate(config_path: str | Path, output_dir: str | Path) -> Pat
             "verification_config_sha256": sha256_file(config_path),
             "baseline_config": str(baseline_path),
             "baseline_config_sha256": sha256_file(baseline_path),
+            "turning_feasibility_certificate": _turning_feasibility(
+                parameters, integration_options
+            ),
         }
     )
 
@@ -330,6 +347,9 @@ def audit_scpc_candidate(config_path: str | Path, output_dir: str | Path) -> Pat
             "baseline_config_sha256": sha256_file(baseline_path),
             "candidate_gate_passed": bool(report["candidate_gate_passed"]),
             "candidate_status": str(report["status"]),
+            "future_turnaround_excluded": bool(
+                report["turning_feasibility_certificate"]["future_turnaround_excluded"]
+            ),
         },
     )
     provenance["outputs"] = build_output_inventory([report_path], relative_to=output)
