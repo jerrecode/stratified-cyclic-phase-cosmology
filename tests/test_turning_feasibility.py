@@ -56,7 +56,7 @@ def test_negative_potential_floor_does_not_issue_positive_energy_certificate() -
         parameters,
         a0=1.0,
         phi0=0.0,
-        phi_dot0=2.0,
+        phi_dot0=3.0,
         branch=1,
     )
     assert not certificate.nonnegative_total_density_guaranteed
