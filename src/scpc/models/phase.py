@@ -564,7 +564,7 @@ def _first_dense_domain_exit(
                     right_time = float(sample_times[index + 1])
                     candidate_time = float(
                         brentq(
-                            lambda time: definition.residual(
+                            lambda time, definition=definition: definition.residual(
                                 np.asarray(dense_solution(time), dtype=float)
                             ),
                             left_time,
@@ -701,7 +701,11 @@ def integrate_scpc(
                     np.asarray(sol.y_events[event_index][0], dtype=float),
                 )
             )
-    reported = min(reported_candidates, key=lambda candidate: (candidate[0], candidate[1])) if reported_candidates else None
+    reported = (
+        min(reported_candidates, key=lambda candidate: (candidate[0], candidate[1]))
+        if reported_candidates
+        else None
+    )
     dense_exit = (
         _first_dense_domain_exit(
             np.asarray(sol.t, dtype=float),
