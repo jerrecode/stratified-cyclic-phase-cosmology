@@ -1,43 +1,48 @@
-\section{Numerical validation}
+\section{Numerical and inference validation}
 \label{app:numerical-validation}
 
-The test suite includes the Einstein--de Sitter expansion law, a sparse positive-redshift
-Einstein--de Sitter distance regression, monotonic luminosity distance, positive-definite DESI
-covariance validation, an exact flat de Sitter scalar-field limit, potential-derivative
-verification, topology-aware return metrics, and manifest-schema validation. The sparse-redshift
-test is specifically designed to prevent the first DESI distance from being assigned zero merely
-because the requested measurement grid begins above $z=0$.
+The test suite includes the Einstein--de Sitter expansion law, a sparse positive-redshift distance regression, monotonic luminosity distance, BAO observable definitions, positive-definite DESI covariance validation, an exact flat de Sitter scalar-field limit, potential-derivative verification, analytical bounce and turnaround cases, topology-aware return metrics, a constant-field $S^4$ Laplace--Beltrami null mode, finite-volume layered-field energy conservation, and manifest-schema validation. The sparse-redshift test specifically prevents the first DESI distance from being assigned zero merely because the requested measurement grid begins above $z=0$.
 
-The background verification workflow executes a declared tolerance ladder and an
-independent-integrator comparison. For a stored state component $y$, the reported normalized error
-is
-\begin{equation}
-  \epsilon_y = \frac{\lVert y-y_{\mathrm{ref}}\rVert_\infty}
-  {\max(\lVert y_{\mathrm{ref}}\rVert_\infty,\epsilon_{\mathrm{floor}})}.
-\end{equation}
-Solver verification always compares the unwrapped scalar trajectory. A displacement by one or
-more periods of the potential is therefore retained, because a periodic potential alone does not
-identify the scalar target space. This prevents distinct separatrix crossings or winding histories
-from being hidden by a modulo comparison. The verification report records componentwise errors,
-the maximum Friedmann-constraint residual, configuration hashes, solver methods, tolerances, and
-predeclared acceptance thresholds.
+The background verification workflow executes the declared tolerance ladder and independent-integrator comparison described in the main text. Solver verification always compares the unwrapped scalar trajectory. A displacement by one or more periods of the potential is retained because a periodic potential alone does not identify the scalar target space. Turning states come from root-localized adaptive output and are serialized separately from the uniformly sampled plotting trajectory, so return metrics do not depend on the requested plotting density. Even repeated close returns in one integration are not a proof of recurrence or a stable limit cycle; Poincar\'e maps, variational equations, Floquet multipliers, basin studies, perturbation stability, and synthetic recovery remain later-stage gates.
 
-The DESI inference workflow has a separate validation hierarchy. The small Gaussian likelihood
-files are checksum-pinned. The local CAMB maximum-posterior optimizer is a deterministic regression
-check only; posterior contours are constructed from the official DESI MCMC chain release. Chain
-files remain external and their URLs, sizes, and SHA-256 hashes are written into each generated
-inference report. CAMB supplies the drag horizon and high-redshift species densities. A legacy
-Aubourg approximation is evaluated only as a supplementary backend cross-check.
+\subsection{DESI chain convergence and posterior construction}
+The DESI inference workflow downloads the official sample files and release-side metadata, including the checkpoint and updated configuration, and records SHA-256 checksums. GetDist independently evaluates the same sample files used for the plotted posterior. The burn-selection rule is predeclared: test candidate initial-row fractions and select the earliest cut satisfying multivariate $R-1\le0.01$. A command-line override is accepted only if the same convergence threshold still passes.
 
-Repeated turning points are assessed by comparing consecutive states of the same event class.
-Their state vectors are taken directly from the adaptive solver's root-localized event output and
-serialized separately from the uniformly sampled plotting trajectory. Consequently, return
-metrics do not depend on the requested output-sampling density. For the baseline real scalar, the
-full field displacement is retained and normalized by the adjacent-minimum spacing of the
-potential. A circular target space must be declared explicitly; adjacent minima remain distinct,
-while a return after one full target circumference is recorded as a nonzero-winding return. Return
-counts and error summaries are evaluated independently for bounces and turnarounds. Even repeated
-close returns in one integration are not a proof of recurrence or a stable limit cycle.
-Reproduction across tolerances and independent solvers, Poincar\'e maps, variational equations,
-Floquet multipliers, perturbation-stability analysis, and synthetic parameter recovery remain
-required later-stage tests.
+\IfFileExists{generated/desi_chain_convergence_table.tex}{
+\begin{table}[ht]
+\centering
+\small
+\input{generated/desi_chain_convergence_table.tex}
+\caption{GetDist convergence diagnostics for the official DESI chain sets. Weighted ESS here is the standard weight-only effective sample count $(\sum_iw_i)^2/\sum_iw_i^2$; the serialized GetDist convergence report additionally includes autocorrelation and split-chain diagnostics.}
+\label{tab:desi-convergence}
+\end{table}}{}
+
+The principal two-dimensional regions are produced from GetDist's marginalized density estimator rather than a hand-tuned image-space Gaussian smoothing. This makes the contour construction auditable against a standard cosmological-chain analysis package \cite{getdist}. The posterior-predictive panel uses the complete pinned covariance through its Cholesky factor $C=LL^T$ and plots $L^{-1}(m-d)$ rather than independent marginal residuals.
+
+\subsection{Derived kinematics and sound-horizon cross-check}
+The late-time flat-$\Lambda$CDM acceleration quantities are propagated through the released BAO+BBN posterior rather than shown as exact central-model curves.
+\IfFileExists{generated/kinematic_summary_table.tex}{
+\begin{table}[ht]
+\centering
+\small
+\input{generated/kinematic_summary_table.tex}
+\caption{Posterior-derived flat-$\Lambda$CDM kinematic summaries. These quantities are standard-cosmology consequences of the released posterior, not independent observables.}
+\label{tab:kinematics}
+\end{table}}{}
+
+The Aubourg approximation is not the inference backend. It is evaluated over a deterministic posterior-spanning set and compared directly with CAMB.
+\IfFileExists{generated/aubourg_validation_table.tex}{
+\begin{table}[ht]
+\centering
+\small
+\input{generated/aubourg_validation_table.tex}
+\caption{Sound-horizon backend cross-check over posterior-spanning parameter draws.}
+\label{tab:aubourg-validation}
+\end{table}}{}
+\IfFileExists{generated/sound_horizon_backend_validation.png}{
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.72\linewidth]{generated/sound_horizon_backend_validation.png}
+\caption{Fractional difference between the Aubourg sound-horizon approximation and CAMB. The approximation remains a supplementary numerical diagnostic only.}
+\label{fig:aubourg-validation}
+\end{figure}}{}
