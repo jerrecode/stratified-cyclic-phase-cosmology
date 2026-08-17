@@ -18,12 +18,12 @@ from urllib.request import Request, urlopen
 import numpy as np
 
 DESI_DR2_CHAIN_ROOT = "https://data.desi.lbl.gov/public/papers/y3/bao-cosmo-params/cobaya"
+# The DESI chain data model documents these products for standard (non-post-processed)
+# Cobaya chains. It documents input.yaml *or* updated.yaml; the DR2 products used here
+# provide the latter, so we do not invent auxiliary files such as margestats/progress.
 DESI_CHAIN_METADATA = (
     "chain.checkpoint",
     "chain.covmat",
-    "chain.input.yaml",
-    "chain.margestats",
-    "chain.progress",
     "chain.updated.yaml",
 )
 
@@ -145,7 +145,6 @@ def download_file(
         except HTTPError as exc:
             last_error = exc
             if exc.code == 416 and pending.exists():
-                # A stale/invalid range must never be promoted to the final path. Restart.
                 pending.unlink()
             if 400 <= exc.code < 500 and exc.code not in {408, 416, 429}:
                 raise RuntimeError(f"Permanent HTTP error downloading {url}: {exc}") from exc
@@ -202,7 +201,7 @@ def ensure_official_chain_metadata(
     dataset: str,
     download: bool = False,
 ) -> list[dict[str, object]]:
-    """Resolve release-side chain metadata and convergence products with checksums."""
+    """Resolve documented release-side chain metadata with checksums."""
     target = root / model / dataset
     base_url = chain_directory_url(model, dataset)
     provenance: list[dict[str, object]] = []
