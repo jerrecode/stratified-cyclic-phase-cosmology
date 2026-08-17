@@ -9,13 +9,26 @@ The repository currently provides:
 - a canonical stratification field in homogeneous FLRW spacetime;
 - standard late-time FLRW comparison backgrounds;
 - event-based detection of candidate bounces and turnarounds;
+- checked finite/physical-domain termination with exact terminal evidence and durable failure classification;
 - Friedmann-constraint monitoring;
 - explicit turning-point return metrics;
 - tolerance-ladder and cross-solver verification machinery;
+- deterministic/stochastic background-scan infrastructure with retained rejected outcomes;
 - a versioned public-data release registry;
-- a modular manuscript and reproducibility workflow.
+- an official DESI DR2 2025 BAO-only and BAO+BBN released-chain reproduction benchmark with GetDist convergence checks, exact-CAMB diagnostics, full-covariance residual treatment, and cryptographically pinned external products;
+- a modular manuscript and reproducibility workflow exercised by dedicated CI, inference, and paper-build jobs.
 
-The canonical scalar baseline is a reference implementation. It is not yet a demonstrated cyclic theory.
+The canonical scalar baseline is a reference implementation. It is not yet a demonstrated cyclic theory. The DESI DR2 calculation validates the observational/inference machinery under standard flat-LambdaCDM assumptions; it is not an SCPC fit and does not advance SCPC directly to the inference gate.
+
+## Current gate assessment
+
+- **Stage 0 numerical baseline:** satisfied for the currently implemented baseline workflows: automated tests, manifest validation, residual checks, tolerance/cross-solver verification, deterministic reproduction, and paper builds pass under CI. This is a statement about implementation consistency, not physical viability.
+- **Stage 1 parameter-space classification:** infrastructure and physical-domain/failure semantics are substantially implemented, but the scientific gate is **not passed** because no converged parameter region with the required repeated same-kind returns has been established.
+- **Stage 2 homogeneous recurrence/stability:** **not passed**. No stable limit cycle has been demonstrated with a Poincare map, converged monodromy/Floquet analysis, or equivalent recurrence/stability evidence.
+- **Stage 3 perturbative/EFT health:** **not passed**. A complete perturbative no-ghost, gradient-stability, and strong-coupling analysis for a viable cyclic background is not available.
+- **Stage 4 SCPC observable transfer functions:** **not passed**. The standard-cosmology CAMB/BAO machinery is a comparator and validation backend; it is not a derived SCPC Boltzmann/transfer calculation.
+- **Stage 5 SCPC statistical inference:** **not entered**. The official DESI posterior reproduction demonstrates the statistical plumbing required for future inference, but no release likelihood is currently constraining an independently derived SCPC observable prediction.
+- **Stage 6 optional thermodynamic/topological extensions:** remains downstream of the physical viability gates and must not be used to bypass them.
 
 ## Stage 0: reproducible numerical baseline
 
@@ -33,26 +46,28 @@ Required evidence:
 
 ## Stage 1: background parameter-space classification
 
-**Objective:** map which parameter and initial-condition regions produce expansion, recollapse, singularity, one-off bounces, repeated turning points, or candidate recurrence.
+**Objective:** map which parameter and initial-condition regions produce expansion, recollapse, physical-domain termination, one-off bounces, repeated turning points, or candidate recurrence without interpreting numerical analysis boundaries as physical singularities.
 
 Implementation requirements:
 
 - deterministic parameter-grid and stochastic sampling modes;
 - physical-domain and finite-state termination rules;
-- event-complete integration with no missed zero crossings of the Hubble parameter;
+- event-complete integration with checked zero-crossing detection of the Hubble parameter;
 - classification independent of plotting resolution;
+- exact terminal-state and boundary evidence for terminated runs;
 - storage of failures and rejected runs, not only successful examples;
-- compact NetCDF or Zarr outputs plus a tabular run index.
+- durable tabular/content-addressed evidence sufficient to reconstruct why a run was retained or rejected.
 
 Primary outputs:
 
 - phase diagram of outcome class versus parameters;
-- constraint-residual and solver-failure maps;
-- distributions of bounce and turnaround scales;
+- constraint-residual and solver/failure maps;
+- distributions of bounce and turnaround scales where they exist;
 - turning-point return-error maps;
-- sensitivity to initial conditions.
+- sensitivity to initial conditions;
+- explicit maps of numerical-domain exits separated from physical/model classifications.
 
-**Gate:** a candidate cyclic region requires at least two same-kind returns with small, converged return errors.
+**Gate:** a candidate cyclic region requires at least two same-kind returns with small, converged return errors and no unresolved integrity/domain ambiguity.
 
 ## Stage 2: homogeneous recurrence and stability
 
@@ -99,7 +114,7 @@ Required observables may include:
 - supernova distance moduli;
 - stochastic gravitational-wave spectra.
 
-Implementation should extend or interface with validated Boltzmann software rather than silently reimplementing it. Every mapping from an SCPC field variable to an observable must be derived and dimensionally documented.
+Implementation should extend or interface with validated Boltzmann software rather than silently reimplementing it. Every mapping from an SCPC field variable to an observable must be derived and dimensionally documented. Standard-LambdaCDM CAMB calculations used for regression/reproduction do not count as SCPC transfer functions.
 
 **Gate:** apparent frequencies or features must survive duration, cadence, window, resolution, transfer-function, and look-elsewhere tests.
 
@@ -116,9 +131,11 @@ Required practices:
 - posterior-predictive checks;
 - comparison against matched standard and cyclic baselines;
 - information criteria or Bayesian evidence with complexity penalties;
-- publication of chains, configs, and exact data-product identifiers.
+- publication of chains/configs and exact immutable data-product identifiers or cryptographic local pins.
 
-**Gate:** empirical support is not claimed from a better visual overlay or an uncorrected maximum-likelihood improvement.
+The current DESI DR2 released-chain reproduction demonstrates these practices for a standard flat-LambdaCDM benchmark. It is a pipeline qualification step only. SCPC enters this stage only after Stage 4 supplies validated SCPC predictions for the measured observables.
+
+**Gate:** empirical support is not claimed from a better visual overlay, an uncorrected maximum-likelihood improvement, a standard-cosmology reproduction, or any fit performed before the model-to-observable map exists.
 
 ## Stage 6: thermodynamic and topological extensions
 
@@ -135,4 +152,4 @@ The term "vortex" should remain absent from the model name unless a nonzero vort
 | `0.x stable-background candidate` | homogeneous Floquet or equivalent stability evidence |
 | `0.x perturbatively viable candidate` | ghost, gradient, and strong-coupling checks |
 | `0.x predictive candidate` | derived observables and validated transfer pipeline |
-| `1.0 scientific model` | reproducible inference, limitations, and explicit rejection domain |
+| `1.0 scientific model` | reproducible SCPC inference, limitations, and explicit rejection domain |

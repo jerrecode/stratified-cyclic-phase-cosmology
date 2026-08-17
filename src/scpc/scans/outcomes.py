@@ -493,7 +493,10 @@ def assess_solution(
     if np.any(np.diff(time) <= 0.0):
         raise ResultIntegrityError("Stored trajectory times must be strictly increasing")
 
-    event_sequence = tuple(solution.turning_kinds)
+    try:
+        event_sequence = tuple(solution.turning_kinds)
+    except TypeError as error:
+        raise ResultIntegrityError("Turning-event kinds must be iterable") from error
     try:
         turning_times = np.asarray(solution.turning_times, dtype=float)
     except (TypeError, ValueError, OverflowError) as error:
@@ -532,6 +535,42 @@ def assess_solution(
         )
     if np.any(~np.isfinite(turning_states)):
         raise ResultIntegrityError("Turning-state vectors must be finite")
+    if turning_states.size:
+        if np.any(turning_states[:, 0] <= 0.0):
+            raise ResultIntegrityError(
+                "Turning-state vectors must have a positive scale factor"
+            )
+        if np.any(np.abs(turning_states[:, 1]) > hubble_zero_tolerance):
+            raise ResultIntegrityError(
+                "Turning-state vectors must lie on the declared Hubble-zero event surface"
+            )
+        for event_kind, state in zip(event_sequence, turning_states, strict=True):
+            scale_factor = float(state[0])
+            velocity = float(state[3])
+            rho_m = float(solution.parameters.matter_density(scale_factor))
+            rho_r = float(solution.parameters.radiation_density(scale_factor))
+            hdot = float(
+                solution.parameters.spatial_curvature_k / scale_factor**2
+                - 0.5 * (rho_m + 4.0 * rho_r / 3.0 + velocity**2)
+            )
+            if not np.isfinite(hdot):
+                raise ResultIntegrityError(
+                    "Turning-state vectors produce a nonfinite Hubble derivative"
+                )
+            if event_kind == "bounce" and hdot <= 0.0:
+                raise ResultIntegrityError(
+                    "Bounce turning-state vector contradicts the sign of dH/dt"
+                )
+            if event_kind == "turnaround" and hdot >= 0.0:
+                raise ResultIntegrityError(
+                    "Turnaround turning-state vector contradicts the sign of dH/dt"
+                )
+            if event_kind == "degenerate":
+                tolerance = _event_tolerance(solution, abs(hdot))
+                if abs(hdot) > tolerance:
+                    raise ResultIntegrityError(
+                        "Degenerate turning-state vector has a resolved nonzero dH/dt"
+                    )
 
     constraint = arrays[-1]
     finite_constraint = constraint[np.isfinite(constraint)]

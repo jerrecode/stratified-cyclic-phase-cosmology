@@ -11,6 +11,8 @@ The repository deliberately separates four structures that must not be conflated
 
 The initial implementation is a scientifically conservative baseline. It contains standard FLRW comparison models, a canonical scalar stratification field in FLRW spacetime, constraint diagnostics, turning-point return diagnostics, numerical-convergence checks, reproducible model-comparison grids, a machine-validated public-data manifest, and a modular LaTeX paper. It does **not** claim that a recurrent or stable cycle, a fundamental discrete time, or a physical vortex has already been demonstrated.
 
+The repository also contains a publication-grade reproduction of the official DESI DR2 2025 flat-LambdaCDM BAO-only and BAO+BBN posterior products. That calculation is a standard-cosmology validation benchmark for the observational pipeline, not an SCPC observational fit.
+
 ## Research questions
 
 The codebase is organized to answer, in order:
@@ -40,13 +42,24 @@ scpc verify-background --config configs/scpc_verification.yaml --output results/
 pytest
 ```
 
-Generate the reproducible paper inputs:
+Generate the deterministic baseline paper inputs:
 
 ```bash
 python scripts/reproduce.py
 scpc verify-background
+```
+
+Generate the complete publication inputs, including the released DESI DR2 posterior reproduction:
+
+```bash
+python -m pip install -e '.[inference]'
+python scripts/reproduce.py
+bash scripts/prefetch_desi_dr2_chains.sh
+python scripts/reproduce_desi_dr2_bbn.py --download-official-chains
 latexmk -pdf -cd paper/main.tex
 ```
+
+The DESI prefetch step validates the exact byte length and locally recorded SHA-256 publication pin of every selected official sample and metadata product. The Python inference layer independently validates the same complete external-product set before accepting the publication inference.
 
 ## Core outputs
 
@@ -59,19 +72,20 @@ latexmk -pdf -cd paper/main.tex
 - NetCDF and CSV products with explicit units and coordinates.
 - Publication-ready figures generated from the same arrays used in numerical analysis.
 - A versioned manifest describing public observational releases, products, values, units, dimensions, access protocols, and reproducible retrieval instructions.
+- Official DESI DR2 marginalized-posterior reproduction, convergence diagnostics, exact-CAMB full-covariance residual diagnostics, posterior-propagated standard-cosmology background histories, and machine-readable external-product provenance.
 
 ## Repository map
 
 ```text
 src/scpc/                  importable scientific package
-configs/                   versioned model, run, and verification configurations
+configs/                   versioned model, run, verification, and inference configurations
 data/                      release manifest, schema, checksums, local-data policy
-scripts/                   reproducible workflow entry points
-tests/                     analytical, convergence, unit, regression, and manifest tests
-paper/                     modular LaTeX manuscript and paper-local products
-docs/                      theory, architecture, conventions, governance, and research gates
+scripts/                   reproducible workflow and publication entry points
+tests/                     analytical, convergence, unit, regression, provenance, and manifest tests
+paper/                     modular LaTeX manuscript and paper-local generated products
+docs/                      theory, architecture, conventions, governance, inference contracts, and research gates
 results/                   generated outputs; large results are not committed
-.github/workflows/         continuous integration and paper-build workflows
+.github/workflows/         continuous integration, inference, and paper-build workflows
 ```
 
 ## Scientific nonclaims
@@ -82,9 +96,11 @@ A close return in one integration is not a recurrence result. Candidate recurren
 
 A periodic scalar potential does not make the field compact. The baseline declares a real target space. Circular topology must be selected explicitly, adjacent potential minima remain distinct strata, and nonzero winding is retained as a separate diagnostic.
 
+The DESI DR2 reproduction does not establish evidence for SCPC or for new cosmological physics. BAO alone constrains `H0 r_d`; the BBN calibration is a prior on the physical baryon density, with `r_d` derived only under the declared standard early-Universe model. The later 2026 DESI Lyman-alpha update is kept separate from the pinned 2025 likelihood until a release-native joint likelihood or covariance supports combination.
+
 ## Reproducibility
 
-Every run should be driven by a committed YAML configuration and should emit a provenance record containing the Git commit, dependency versions, configuration hash, solver settings, platform information, and output checksums. See `docs/reproducibility.md` and `workflows/reproduce.yaml`.
+Every scientific run should be driven by a committed configuration and should emit provenance sufficient to identify the source revision, dependency versions, configuration hash, solver or posterior-processing settings, platform information, external-product identities, and output checksums. Publication external inputs are treated as immutable and must pass their declared integrity checks before use. See `docs/reproducibility.md`, `docs/desi_dr2_bbn_inference.md`, and `workflows/reproduce.yaml`.
 
 ## License and citation
 

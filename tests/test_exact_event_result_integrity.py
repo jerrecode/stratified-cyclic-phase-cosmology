@@ -29,13 +29,13 @@ def _simple_solution() -> SCPCSolution:
         turning_times=np.asarray([1.0]),
         turning_kinds=("turnaround",),
         parameters=SCPCParameters(
-            spatial_curvature_k=0,
+            spatial_curvature_k=1,
             rho_m_ref=0.0,
             rho_r_ref=0.0,
             potential=PeriodicPotential(offset=3.0, amplitude=0.0),
         ),
         solver_metadata={},
-        turning_state_vectors=np.asarray([[1.2, 0.0, 0.0, 0.0]]),
+        turning_state_vectors=np.asarray([[1.2, 0.0, 0.0, 2.0 / 1.2]]),
         requested_end_time=2.0,
     )
 

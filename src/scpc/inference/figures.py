@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import chi2 as chi2_distribution
 
 from scpc.inference.camb_background import CambLCDMParameters, background_history, build_camb_background
 from scpc.inference.desi_chains import ChainSet, weighted_correlation, weighted_mean, weighted_quantile
@@ -69,74 +70,45 @@ def _draw_getdist_contours(ax, samples, x_name: str, y_name: str, *, xlabel: str
     ax.grid(alpha=0.2)
 
 
-def _posterior_subset(chain: ChainSet, maximum: int = 8000) -> tuple[np.ndarray, np.ndarray]:
-    count = chain.weights.size
-    if count <= maximum:
-        indices = np.arange(count)
-    else:
-        indices = np.unique(np.linspace(0, count - 1, maximum, dtype=int))
-    return indices, chain.weights[indices]
+def systematic_posterior_indices(weights: np.ndarray, count: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return deterministic posterior-representative rows and their multiplicities.
 
-
-def _flat_lcdm_bao_predictions(
-    likelihood: DESIDR2BAOLikelihood,
-    H0: np.ndarray,
-    omega_m: np.ndarray,
-    r_drag: np.ndarray,
-) -> np.ndarray:
-    """Vectorized low-z flat-LCDM BAO prediction used only for posterior predictive checks.
-
-    Radiation is negligible over the DESI BAO redshift range.  The independent CAMB MAP
-    calculation remains the regression backend for the exact published likelihood check.
+    The positions are equally spaced in the normalized cumulative weight rather than in
+    MCMC row number. This avoids treating compressed Cobaya rows as equally probable.
     """
-    H0 = np.asarray(H0, dtype=float)
-    omega_m = np.asarray(omega_m, dtype=float)
-    r_drag = np.asarray(r_drag, dtype=float)
-    z_unique = likelihood.unique_redshifts
-    nodes, weights = np.polynomial.legendre.leggauss(48)
-    c_km_s = 299792.458
-    dm = np.empty((H0.size, z_unique.size), dtype=float)
-    dh = np.empty_like(dm)
-    dv = np.empty_like(dm)
-    for j, z in enumerate(z_unique):
-        integration_z = 0.5 * z * (nodes + 1.0)
-        e_grid = np.sqrt(omega_m[:, None] * (1.0 + integration_z[None, :]) ** 3 + (1.0 - omega_m[:, None]))
-        integral = 0.5 * z * np.sum(weights[None, :] / e_grid, axis=1)
-        dm[:, j] = c_km_s / H0 * integral
-        e_here = np.sqrt(omega_m * (1.0 + z) ** 3 + (1.0 - omega_m))
-        dh[:, j] = c_km_s / (H0 * e_here)
-        dv[:, j] = np.cbrt(z * dh[:, j] * dm[:, j] ** 2)
-    index = {float(z): j for j, z in enumerate(z_unique)}
-    prediction = np.empty((H0.size, len(likelihood.rows)), dtype=float)
-    for j, row in enumerate(likelihood.rows):
-        k = index[row.redshift]
-        if row.quantity == "DM_over_rs":
-            prediction[:, j] = dm[:, k] / r_drag
-        elif row.quantity == "DH_over_rs":
-            prediction[:, j] = dh[:, k] / r_drag
-        elif row.quantity == "DV_over_rs":
-            prediction[:, j] = dv[:, k] / r_drag
-        else:  # pragma: no cover - likelihood loader validates supported quantities
-            raise ValueError(f"Unsupported BAO observable {row.quantity}")
-    return prediction
+    w = np.asarray(weights, dtype=float)
+    if w.ndim != 1 or w.size == 0 or np.any(~np.isfinite(w)) or np.any(w < 0) or w.sum() <= 0:
+        raise ValueError("weights must be a finite one-dimensional non-negative vector with positive sum")
+    n = max(1, int(count))
+    targets = (np.arange(n, dtype=float) + 0.5) * (w.sum() / n)
+    selected = np.searchsorted(np.cumsum(w), targets, side="left")
+    selected = np.minimum(selected, w.size - 1)
+    indices, multiplicities = np.unique(selected, return_counts=True)
+    return indices.astype(int), multiplicities.astype(float)
 
 
-def _whitened_posterior_predictive(
+def _camb_posterior_residuals(
     chain: ChainSet,
     likelihood: DESIDR2BAOLikelihood,
     *,
-    maximum: int = 8000,
+    samples: int = 512,
 ) -> tuple[np.ndarray, np.ndarray]:
-    indices, weights = _posterior_subset(chain, maximum=maximum)
-    prediction = _flat_lcdm_bao_predictions(
-        likelihood,
-        chain.h0()[indices],
-        chain.omega_m()[indices],
-        chain.r_drag_mpc()[indices],
-    )
-    residual = prediction - likelihood.data[None, :]
+    """Evaluate exact CAMB BAO residuals on deterministic posterior-representative samples."""
+    indices, multiplicities = systematic_posterior_indices(chain.weights, samples)
+    predictions = np.empty((indices.size, len(likelihood.rows)), dtype=float)
+    H0 = chain.h0()
+    omega_m = chain.omega_m()
+    omega_b = chain.omega_b_h2()
+    for out_index, chain_index in enumerate(indices):
+        parameters = CambLCDMParameters(
+            H0=float(H0[chain_index]),
+            omega_m=float(omega_m[chain_index]),
+            omega_b_h2=float(omega_b[chain_index]),
+        )
+        predictions[out_index] = likelihood.prediction(parameters)
+    residual = predictions - likelihood.data[None, :]
     whitened = np.linalg.solve(likelihood.cholesky, residual.T).T
-    return whitened, weights
+    return whitened, multiplicities
 
 
 def _column_quantiles(matrix: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, ...]:
@@ -145,6 +117,61 @@ def _column_quantiles(matrix: np.ndarray, weights: np.ndarray) -> tuple[np.ndarr
         for j in range(matrix.shape[1])
     ]
     return tuple(np.asarray(results).T)
+
+
+def _background_posterior(
+    chain: ChainSet,
+    z: np.ndarray,
+    *,
+    samples: int = 48,
+) -> dict[str, object]:
+    """Propagate released posterior uncertainty through exact CAMB background histories."""
+    indices, multiplicities = systematic_posterior_indices(chain.weights, samples)
+    species_keys = (
+        "omega_cb",
+        "omega_gamma",
+        "omega_nu_massless",
+        "omega_nu_massive",
+        "omega_lambda",
+    )
+    epoch_keys = ("z_acc", "z_nu_thermal", "z_drag", "z_star", "z_eq", "r_drag_Mpc")
+    histories = {key: np.empty((indices.size, z.size), dtype=float) for key in species_keys}
+    epochs = {key: np.empty(indices.size, dtype=float) for key in epoch_keys}
+    H0 = chain.h0()
+    omega_m = chain.omega_m()
+    omega_b = chain.omega_b_h2()
+    for out_index, chain_index in enumerate(indices):
+        parameters = CambLCDMParameters(
+            H0=float(H0[chain_index]),
+            omega_m=float(omega_m[chain_index]),
+            omega_b_h2=float(omega_b[chain_index]),
+        )
+        history = background_history(parameters, z)
+        for key in species_keys:
+            histories[key][out_index] = np.asarray(history[key], dtype=float)
+        for key in epoch_keys:
+            epochs[key][out_index] = float(history[key])
+
+    species_summary: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for key, matrix in histories.items():
+        q16 = np.empty(z.size, dtype=float)
+        median = np.empty(z.size, dtype=float)
+        q84 = np.empty(z.size, dtype=float)
+        for column in range(z.size):
+            q16[column], median[column], q84[column] = weighted_quantile(
+                matrix[:, column], multiplicities, (0.16, 0.5, 0.84)
+            )
+        species_summary[key] = (q16, median, q84)
+
+    epoch_summary = {key: summarize(values, multiplicities).__dict__ for key, values in epochs.items()}
+    return {
+        "indices": indices,
+        "weights": multiplicities,
+        "species": species_summary,
+        "epochs": epoch_summary,
+        "requested_systematic_positions": int(max(1, samples)),
+        "unique_camb_evaluations": int(indices.size),
+    }
 
 
 def make_main_figure(
@@ -192,47 +219,66 @@ def make_main_figure(
     )
     ax_bbn.set_title("DESI DR2 BAO + BBN posterior")
 
-    whitened, pp_weights = _whitened_posterior_predictive(bbn_chain, likelihood)
-    q025, q16, median, q84, q975 = _column_quantiles(whitened, pp_weights)
+    whitened, residual_weights = _camb_posterior_residuals(bbn_chain, likelihood)
+    q025, q16, median, q84, q975 = _column_quantiles(whitened, residual_weights)
     x = np.arange(1, whitened.shape[1] + 1)
-    ax_resid.fill_between(x, q025, q975, alpha=0.16, label="95% posterior interval")
-    ax_resid.fill_between(x, q16, q84, alpha=0.30, label="68% posterior interval")
+    ax_resid.axhspan(-1.96, 1.96, alpha=0.045, label=r"$N(0,1)$ 95% reference")
+    ax_resid.fill_between(x, q025, q975, alpha=0.14, label="95% posterior model interval")
+    ax_resid.fill_between(x, q16, q84, alpha=0.28, label="68% posterior model interval")
     ax_resid.plot(x, median, marker="o", linewidth=1.0, markersize=3.5, label="posterior median")
     ax_resid.axhline(0.0, linewidth=1.0)
-    labels = [f"{row.quantity.split('_')[0]}\n{row.redshift:.3g}" for row in likelihood.rows]
-    ax_resid.set_xticks(x, labels, fontsize=7)
-    ax_resid.set_ylabel(r"Whitened residual $[L^{-1}(m-d)]_i$")
-    ax_resid.set_xlabel("DESI observable and effective redshift")
-    ax_resid.set_title("Full-covariance posterior predictive check")
-    ax_resid.legend(fontsize=8, loc="upper right")
+    labels = [f"{i}\n{row.quantity.split('_')[0]} {row.redshift:.3g}" for i, row in enumerate(likelihood.rows, 1)]
+    ax_resid.set_xticks(x, labels, fontsize=6.7)
+    ax_resid.set_ylabel(r"Cholesky-whitened residual $[L^{-1}(m-d)]_i$")
+    ax_resid.set_xlabel("Whitened mode i; second line identifies row i in the pinned ordering")
+    ax_resid.set_title("Posterior-propagated full-covariance residual diagnostic")
+    ax_resid.legend(fontsize=7.5, loc="upper right")
     ax_resid.grid(alpha=0.2)
+    chi2_values = np.sum(whitened**2, axis=1)
+    chi2_summary = summarize(chi2_values, residual_weights)
+    posterior_predictive_tail = weighted_mean(
+        chi2_distribution.sf(chi2_values, df=len(likelihood.rows)), residual_weights
+    )
+    annotation = (
+        rf"CAMB posterior: $\chi^2_{{\rm BAO}}={chi2_summary.median:.2f}$ "
+        rf"$[{chi2_summary.q16:.2f},{chi2_summary.q84:.2f}]$; "
+        rf"$p_{{\rm PPC}}={posterior_predictive_tail:.3f}$"
+    )
     if map_result is not None:
-        ax_resid.text(
-            0.02,
-            0.04,
-            rf"Independent CAMB MAP: $\chi^2_{{\rm BAO}}/\nu="
-            rf"{float(map_result['chi_square_bao']):.2f}/{int(map_result['bao_degrees_of_freedom'])}$, "
-            rf"$p={float(map_result['bao_goodness_of_fit_p_value']):.3f}$",
-            transform=ax_resid.transAxes,
-            fontsize=8,
+        annotation += (
+            "\n"
+            rf"Independent MAP: $\chi^2/\nu={float(map_result['chi_square_bao']):.2f}/"
+            rf"{int(map_result['bao_degrees_of_freedom'])}$, "
+            rf"$p_{{\rm gof}}={float(map_result['bao_goodness_of_fit_p_value']):.3f}$"
         )
+    ax_resid.text(0.02, 0.035, annotation, transform=ax_resid.transAxes, fontsize=7.4, va="bottom")
+    ax_resid.text(
+        0.02,
+        0.965,
+        r"Mode $i$ mixes covariance rows $1\ldots i$; labels are ordering aids, not one-to-one observables.",
+        transform=ax_resid.transAxes,
+        fontsize=6.8,
+        va="top",
+    )
 
     H0_summary = summarize(H0_bbn, bbn_chain.weights)
     om_summary = summarize(omega_m_bbn, bbn_chain.weights)
     ob_summary = summarize(bbn_chain.omega_b_h2(), bbn_chain.weights)
-    central = CambLCDMParameters(
-        H0=H0_summary.median,
-        omega_m=om_summary.median,
-        omega_b_h2=ob_summary.median,
-    )
     z_early = np.geomspace(1.0e-4, 1.0e5, 700) - 1.0e-4
-    history = background_history(central, z_early)
+    bg = _background_posterior(bbn_chain, z_early, samples=48)
     zp1 = 1.0 + z_early
-    ax_early.semilogx(zp1, history["omega_cb"], label=r"$\Omega_{cb}$")
-    ax_early.semilogx(zp1, history["omega_gamma"], label=r"$\Omega_\gamma$")
-    ax_early.semilogx(zp1, history["omega_nu_massless"], label=r"$\Omega_{\nu,\rm massless}$")
-    ax_early.semilogx(zp1, history["omega_nu_massive"], label=r"$\Omega_{\nu,\rm massive}$")
-    ax_early.semilogx(zp1, history["omega_lambda"], label=r"$\Omega_\Lambda$")
+    species_specs = (
+        ("omega_cb", r"$\Omega_{cb}$"),
+        ("omega_gamma", r"$\Omega_\gamma$"),
+        ("omega_nu_massless", r"$\Omega_{\nu,\rm massless}$"),
+        ("omega_nu_massive", r"$\Omega_{\nu,\rm massive}$"),
+        ("omega_lambda", r"$\Omega_\Lambda$"),
+    )
+    for key, label in species_specs:
+        low, center, high = bg["species"][key]
+        (line,) = ax_early.semilogx(zp1, center, label=label)
+        ax_early.fill_between(zp1, low, high, color=line.get_color(), alpha=0.08, linewidth=0)
+
     marker_specs = (
         ("z_acc", r"$z_{\rm acc}$", 0.98, "right"),
         ("z_nu_thermal", r"$z_{\nu,\rm th}$", 0.88, "right"),
@@ -241,9 +287,14 @@ def make_main_figure(
         ("z_eq", r"$z_{\rm eq}$", 0.55, "right"),
     )
     for key, label, text_y, horizontal in marker_specs:
-        value = float(history[key])
+        summary = bg["epochs"][key]
+        value = float(summary["median"])
         if np.isfinite(value) and value >= 0:
-            ax_early.axvline(1.0 + value, linewidth=0.8, linestyle="--", alpha=0.55)
+            low = float(summary["q16"])
+            high = float(summary["q84"])
+            if np.isfinite(low) and np.isfinite(high) and high > low:
+                ax_early.axvspan(1.0 + low, 1.0 + high, alpha=0.055, linewidth=0)
+            ax_early.axvline(1.0 + value, linewidth=0.8, linestyle="--", alpha=0.60)
             ax_early.text(
                 1.0 + value,
                 text_y,
@@ -256,7 +307,7 @@ def make_main_figure(
     ax_early.set_ylim(-0.02, 1.03)
     ax_early.set_xlabel(r"$1+z$")
     ax_early.set_ylabel("Fraction of critical density")
-    ax_early.set_title("CAMB species fractions and characteristic epochs")
+    ax_early.set_title("CAMB background extrapolation with 68% posterior bands")
     ax_early.legend(fontsize=7.5, ncol=2)
     ax_early.grid(alpha=0.2)
 
@@ -267,7 +318,6 @@ def make_main_figure(
     fig.savefig(output, dpi=220, bbox_inches="tight")
     plt.close(fig)
 
-    median_whitened_chi2 = float(np.sum(median**2))
     return {
         "bao_only": {
             "omega_m": summarize(omega_m_bao, bao_chain.weights).__dict__,
@@ -279,21 +329,26 @@ def make_main_figure(
             "H0": H0_summary.__dict__,
             "omega_b_h2": ob_summary.__dict__,
         },
-        "posterior_predictive": {
+        "posterior_residual_diagnostic": {
+            "method": (
+                "exact CAMB predictions on deterministic systematic posterior-weight positions; "
+                "Cholesky whitening"
+            ),
+            "requested_systematic_positions": 512,
+            "unique_camb_evaluations": int(whitened.shape[0]),
             "whitened_residual_median": median.tolist(),
-            "median_vector_squared_norm": median_whitened_chi2,
-            "draws_used": int(whitened.shape[0]),
+            "chi_square": chi2_summary.__dict__,
+            "bayesian_posterior_predictive_tail_probability": float(posterior_predictive_tail),
+            "note": "The component labels identify the pinned row ordering; Cholesky mode i mixes rows 1..i.",
         },
-        "camb_central": {
-            "H0": central.H0,
-            "omega_m": central.omega_m,
-            "omega_b_h2": central.omega_b_h2,
-            "r_drag_Mpc": float(history["r_drag_Mpc"]),
-            "z_acc": float(history["z_acc"]),
-            "z_nu_thermal": float(history["z_nu_thermal"]),
-            "z_drag": float(history["z_drag"]),
-            "z_star": float(history["z_star"]),
-            "z_eq": float(history["z_eq"]),
+        "camb_background_posterior": {
+            "method": "exact CAMB histories on deterministic systematic posterior-weight positions",
+            "requested_systematic_positions": int(bg["requested_systematic_positions"]),
+            "unique_camb_evaluations": int(bg["unique_camb_evaluations"]),
+            "characteristic_epochs": bg["epochs"],
+            "epistemic_status": (
+                "model-derived standard-LambdaCDM extrapolation, not direct high-redshift DESI measurement"
+            ),
         },
     }
 
@@ -353,10 +408,10 @@ def aubourg_r_drag_mpc(
 
 
 def make_aubourg_validation_figure(bbn_chain: ChainSet, output: Path, *, samples: int = 128) -> dict[str, float]:
-    """Compare the legacy Aubourg approximation against CAMB on posterior-spanning draws."""
+    """Compare the legacy Aubourg approximation against CAMB on weighted posterior representatives."""
     output.parent.mkdir(parents=True, exist_ok=True)
     count = max(16, int(samples))
-    indices = np.unique(np.linspace(0, bbn_chain.weights.size - 1, count, dtype=int))
+    indices, multiplicities = systematic_posterior_indices(bbn_chain.weights, count)
     H0 = bbn_chain.h0()[indices]
     omega_m = bbn_chain.omega_m()[indices]
     omega_b = bbn_chain.omega_b_h2()[indices]
@@ -377,10 +432,13 @@ def make_aubourg_validation_figure(bbn_chain: ChainSet, output: Path, *, samples
     ax.grid(alpha=0.2)
     fig.savefig(output, dpi=220)
     plt.close(fig)
+    mean_fractional = weighted_mean(fractional, multiplicities)
+    rms_fractional = float(np.sqrt(np.average(fractional**2, weights=multiplicities)))
     return {
+        "requested_systematic_positions": int(count),
         "samples": int(exact.size),
-        "mean_fractional_difference": float(np.mean(fractional)),
-        "rms_fractional_difference": float(np.sqrt(np.mean(fractional**2))),
+        "mean_fractional_difference": float(mean_fractional),
+        "rms_fractional_difference": rms_fractional,
         "max_abs_fractional_difference": float(np.max(np.abs(fractional))),
         "r_drag_camb_min_Mpc": float(np.min(exact)),
         "r_drag_camb_max_Mpc": float(np.max(exact)),
