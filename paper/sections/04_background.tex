@@ -53,11 +53,20 @@ a_\star\le a_{\rm turn,max}\equiv\sqrt{\frac{3\Mpl^2}{V_{\min}}}.
 \end{equation}
 Matter, radiation, and kinetic energy can only tighten this bound. On an expanding branch, $a(t)$ increases continuously until a putative first future turnaround. Therefore an initial condition with $a_0\ge a_{\rm turn,max}$ and $H_0>0$ admits no future turnaround at all, provided the solution remains regular. This is an exclusion theorem, not a finite-integration inference.
 
-For the canonical baseline used in this paper, $V_{\min}=3.5\Mpl^4$ and $a_0=1$ in reduced-Planck units, so
+If the initial expanding state lies strictly above the bound, the Friedmann inequality is stronger still. Since $a(t)\ge a_0$ throughout the putative pre-turnaround branch,
 \begin{equation}
-a_{\rm turn,max}=\sqrt{3/3.5}\simeq0.926<a_0.
+H^2(t)\ge \frac{V_{\min}}{3\Mpl^2}-\frac{1}{a^2(t)}
+\ge \frac{V_{\min}}{3\Mpl^2}-\frac{1}{a_0^2}.
+\label{eq:future-hubble-gap}
 \end{equation}
-Consequently the baseline's expanding branch is analytically excluded from future recollapse and hence from future cyclic recurrence. The numerical non-cycle is therefore not merely a consequence of stopping the integration at a finite time. The code emits this result as a machine-readable necessary-condition certificate, and cycle-oriented searches can use the certificate to avoid spending computation on analytically excluded expanding states.
+A strictly positive right-hand side gives a global future Hubble gap: $H$ is bounded away from zero, rather than merely failing to cross it.
+
+For the canonical baseline used in this paper, $V_{\min}=3.5\Mpl^4$ and $a_0=1$ in reduced-Planck units, so
+\begin{align}
+a_{\rm turn,max}&=\sqrt{3/3.5}\simeq0.926<a_0,\\
+H^2(t)&\ge\frac{3.5}{3}-1=\frac16,\qquad H(t)\ge\frac{1}{\sqrt6}\simeq0.408.
+\end{align}
+Consequently the baseline's expanding branch is analytically excluded from future recollapse and hence from future cyclic recurrence, with a strict separation from the $H=0$ event surface. The numerical non-cycle is therefore not merely a consequence of stopping the integration at a finite time. The code emits both the turning-scale bound and the Hubble-gap bound as a machine-readable necessary-condition certificate, and cycle-oriented searches can use the certificate to avoid spending computation on analytically excluded expanding states.
 
 \subsection{What remains free}
 Initial data contain $(a,\phi,\dot\phi)$ plus the sign of $H$, with the magnitude of $H$ fixed by the constraint. A time origin and the overall normalization of $a$ are coordinate conventions. In contrast, the potential parameters and present component densities are physical inputs. They cannot all be auto-derived from the background equations because the system would otherwise be underdetermined. They may be fitted only after a calibrated mapping from the natural-unit solution to measured redshift, the sound horizon, and perturbation observables has been derived. Selecting them merely to force a stable cycle would be circular.
