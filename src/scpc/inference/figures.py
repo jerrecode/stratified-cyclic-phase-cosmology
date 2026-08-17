@@ -330,7 +330,10 @@ def make_main_figure(
             "omega_b_h2": ob_summary.__dict__,
         },
         "posterior_residual_diagnostic": {
-            "method": "exact CAMB predictions on deterministic systematic posterior-weight positions; Cholesky whitening",
+            "method": (
+                "exact CAMB predictions on deterministic systematic posterior-weight positions; "
+                "Cholesky whitening"
+            ),
             "requested_systematic_positions": 512,
             "unique_camb_evaluations": int(whitened.shape[0]),
             "whitened_residual_median": median.tolist(),
@@ -343,7 +346,9 @@ def make_main_figure(
             "requested_systematic_positions": int(bg["requested_systematic_positions"]),
             "unique_camb_evaluations": int(bg["unique_camb_evaluations"]),
             "characteristic_epochs": bg["epochs"],
-            "epistemic_status": "model-derived standard-LambdaCDM extrapolation, not direct high-redshift DESI measurement",
+            "epistemic_status": (
+                "model-derived standard-LambdaCDM extrapolation, not direct high-redshift DESI measurement"
+            ),
         },
     }
 
