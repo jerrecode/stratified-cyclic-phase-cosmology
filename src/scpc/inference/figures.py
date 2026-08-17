@@ -28,7 +28,7 @@ def summarize(values: np.ndarray, weights: np.ndarray) -> PosteriorSummary:
     return PosteriorSummary(weighted_mean(values, weights), float(q16), float(median), float(q84))
 
 
-def _density_grid(x: np.ndarray, y: np.ndarray, weights: np.ndarray, n: int = 180):
+def _density_grid(x: np.ndarray, y: np.ndarray, weights: np.ndarray, n: int = 160):
     """Weighted posterior-density grid from the complete chain."""
     x_lo, x_hi = weighted_quantile(x, weights, (0.001, 0.999))
     y_lo, y_hi = weighted_quantile(y, weights, (0.001, 0.999))
@@ -37,7 +37,7 @@ def _density_grid(x: np.ndarray, y: np.ndarray, weights: np.ndarray, n: int = 18
     x_edges = np.linspace(x_lo - pad_x, x_hi + pad_x, n + 1)
     y_edges = np.linspace(y_lo - pad_y, y_hi + pad_y, n + 1)
     histogram, _, _ = np.histogram2d(x, y, bins=(x_edges, y_edges), weights=weights)
-    density = gaussian_filter(histogram.T, sigma=1.25, mode="nearest")
+    density = gaussian_filter(histogram.T, sigma=2.0, mode="nearest")
     gx = 0.5 * (x_edges[:-1] + x_edges[1:])
     gy = 0.5 * (y_edges[:-1] + y_edges[1:])
     xx, yy = np.meshgrid(gx, gy)
@@ -56,6 +56,7 @@ def _draw_contours(ax, x: np.ndarray, y: np.ndarray, weights: np.ndarray, *, xla
     levels = [thresholds[0.95], thresholds[0.68], float(np.max(density))]
     ax.contourf(xx, yy, density, levels=levels, alpha=0.35)
     ax.contour(xx, yy, density, levels=levels[:-1], linewidths=1.2)
+    ax.text(0.97, 0.96, "68%, 95% HPD", transform=ax.transAxes, ha="right", va="top", fontsize=8)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(alpha=0.2)
@@ -91,7 +92,7 @@ def make_main_figure(
 ) -> dict[str, object]:
     """Create the four-panel publication figure recommended by the scientific audit."""
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(2, 2, figsize=(12.8, 9.2), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(12.8, 9.3), constrained_layout=True)
     ax_bao, ax_bbn, ax_h, ax_early = axes.ravel()
 
     omega_m_bao = bao_chain.omega_m()
@@ -125,17 +126,27 @@ def make_main_figure(
     median_curve = np.median(h_draws, axis=0)
     residual = h_draws / median_curve[None, :] - 1.0
     q025, q16, q84, q975 = np.percentile(residual, [2.5, 16.0, 84.0, 97.5], axis=0)
-    ax_h.fill_between(z, 100.0 * q025, 100.0 * q975, alpha=0.16, label="95% posterior predictive")
-    ax_h.fill_between(z, 100.0 * q16, 100.0 * q84, alpha=0.30, label="68% posterior predictive")
+    ax_h.fill_between(z, 100.0 * q025, 100.0 * q975, alpha=0.16, label="95% credible band")
+    ax_h.fill_between(z, 100.0 * q16, 100.0 * q84, alpha=0.30, label="68% credible band")
     ax_h.axhline(0.0, linewidth=1.0)
     ax_h.axvspan(DESI_EFFECTIVE_REDSHIFTS.min(), DESI_EFFECTIVE_REDSHIFTS.max(), alpha=0.07)
     for zeff in DESI_EFFECTIVE_REDSHIFTS:
         ax_h.axvline(zeff, linewidth=0.6, alpha=0.35)
     ax_h.set_xlabel("Redshift $z$")
     ax_h.set_ylabel(r"$100\,[H(z)/H_{\rm med}(z)-1]$ [%]")
-    ax_h.set_title("Model-implied expansion over the DESI BAO lever arm")
+    ax_h.set_title("Posterior-implied expansion over the DESI BAO lever arm")
     ax_h.legend(fontsize=8, loc="upper right")
     ax_h.grid(alpha=0.2)
+    if map_result is not None:
+        ax_h.text(
+            0.03,
+            0.04,
+            rf"Pinned-likelihood MAP: $\chi^2_{{\rm BAO}}/\nu="
+            rf"{float(map_result['chi_square_bao']):.2f}/{int(map_result['bao_degrees_of_freedom'])}$, "
+            rf"$p={float(map_result['bao_goodness_of_fit_p_value']):.3f}$",
+            transform=ax_h.transAxes,
+            fontsize=8,
+        )
 
     H0_summary = summarize(H0_bbn, bbn_chain.weights)
     om_summary = summarize(omega_m_bbn, bbn_chain.weights)
@@ -170,19 +181,10 @@ def make_main_figure(
     ax_early.legend(fontsize=8, ncol=2)
     ax_early.grid(alpha=0.2)
 
-    fig.suptitle(r"DESI DR2 (2025 BAO likelihood) + BBN constraints in flat $\Lambda$CDM", fontsize=15)
-    note = (
-        "Top: marginalized official DESI MCMC posteriors. Bottom left: posterior-predictive low-z model band; "
-        "vertical lines mark DESI effective redshifts. Bottom right: CAMB-derived species fractions; the 0.06 eV "
-        "massive-neutrino density is not forced to scale as a^-3 at early times."
+    fig.suptitle(
+        r"DESI DR2 BAO + BBN constraints in flat $\Lambda$CDM (2025 Results I/II likelihood)",
+        fontsize=15,
     )
-    if map_result is not None:
-        note += (
-            f" Independent pinned-likelihood MAP check: chi2_BAO={float(map_result['chi_square_bao']):.2f}, "
-            f"nu={int(map_result['bao_degrees_of_freedom'])}, "
-            f"p={float(map_result['bao_goodness_of_fit_p_value']):.3f}."
-        )
-    fig.text(0.5, 0.005, note, ha="center", va="bottom", fontsize=8, wrap=True)
     fig.savefig(output, dpi=220, bbox_inches="tight")
     plt.close(fig)
 
