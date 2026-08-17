@@ -13,7 +13,7 @@ from scpc.visualization.topology import plot_layered_propagation, plot_s4_foliat
 from scpc.workflows import compare_models, run_scpc_background, verify_scpc_background
 
 
-def _run_layered(output: Path) -> tuple[Path, Path, Path]:
+def _run_layered(output: Path) -> tuple[Path, Path, Path, Path]:
     output.mkdir(parents=True, exist_ok=True)
     grid = S4RadialGrid(cells=96, radius=1.0)
     parameters = LayeredScalarParameters(mass=0.35, coupling=0.05, damping=0.0)
@@ -50,7 +50,28 @@ def _run_layered(output: Path) -> tuple[Path, Path, Path]:
     diagnostics_path.write_text(json.dumps(diagnostics, indent=2) + "\n", encoding="utf-8")
     figure_path = output / "layered_propagation.png"
     plot_layered_propagation(result, figure_path)
-    return data_path, diagnostics_path, figure_path
+    summary_path = output / "layered_summary.tex"
+    summary_path.write_text(
+        "\\begin{table}[ht]\n"
+        "\\centering\n"
+        "\\small\n"
+        "\\begin{tabular}{lr}\n"
+        "\\toprule\n"
+        "Fixed-background layered diagnostic & Value \\\\\n"
+        "\\midrule\n"
+        f"Radial finite-volume cells & {diagnostics['cells']} \\\\\n"
+        f"Stored times & {diagnostics['stored_times']} \\\\\n"
+        f"DOP853 right-hand-side evaluations & {diagnostics['nfev']} \\\\\n"
+        f"Maximum $|E/E_0-1|$ & ${diagnostics['max_abs_relative_energy_drift']:.3e}$ \\\\\n"
+        "Gravitational backreaction & absent by construction \\\\\n"
+        "\\bottomrule\n"
+        "\\end{tabular}\n"
+        "\\caption{Numerical diagnostics for the fixed-$S^4$ scalar demonstrator. The energy uses the same face-gradient form as the finite-volume Laplacian.}\n"
+        "\\label{tab:layered-diagnostic}\n"
+        "\\end{table}\n",
+        encoding="utf-8",
+    )
+    return data_path, diagnostics_path, figure_path, summary_path
 
 
 def main() -> None:
@@ -66,7 +87,7 @@ def main() -> None:
     compare_models("configs/model_comparisons.yaml", model_dir)
     run_scpc_background("configs/scpc_baseline.yaml", scpc_dir)
     verification_path = verify_scpc_background("configs/scpc_verification.yaml", verification_dir)
-    layered_data, layered_diagnostics, layered_figure = _run_layered(layered_dir)
+    layered_data, layered_diagnostics, layered_figure, layered_summary = _run_layered(layered_dir)
     topology_figure = topology_dir / "s4_foliation.png"
     plot_s4_foliation(topology_figure)
 
@@ -80,6 +101,7 @@ def main() -> None:
         (layered_data, paper_dir / "layered_test_field.nc"),
         (layered_diagnostics, paper_dir / "layered_diagnostics.json"),
         (layered_figure, paper_dir / "layered_propagation.png"),
+        (layered_summary, paper_dir / "layered_summary.tex"),
         (topology_figure, paper_dir / "s4_foliation.png"),
     ]:
         shutil.copy2(source, target)
