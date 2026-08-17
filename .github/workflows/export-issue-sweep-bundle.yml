@@ -1,0 +1,31 @@
+name: Export issue-sweep Git bundle
+
+on:
+  push:
+    branches:
+      - tools/export-issue-sweep-2026-08-17
+    paths:
+      - .github/workflows/export-issue-sweep-bundle.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/issue-sweep-2026-08-17
+          fetch-depth: 0
+      - name: Build and verify portable Git bundle
+        shell: bash
+        run: |
+          git log -1 --format='target=%H %s'
+          git bundle create /tmp/stratified-cyclic-phase-cosmology-issue-sweep.bundle HEAD
+          git bundle verify /tmp/stratified-cyclic-phase-cosmology-issue-sweep.bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stratified-cyclic-phase-cosmology-issue-sweep-bundle
+          path: /tmp/stratified-cyclic-phase-cosmology-issue-sweep.bundle
+          if-no-files-found: error
