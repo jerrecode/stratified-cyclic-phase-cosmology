@@ -6,15 +6,21 @@ on:
       - "paper/**"
       - "src/**"
       - "configs/**"
+      - "data/analysis_ready/desi_dr2_bao/**"
       - "scripts/reproduce.py"
+      - "scripts/reproduce_desi_dr2_bbn.py"
       - "workflows/reproduce.yaml"
+      - ".github/workflows/paper.yml"
   pull_request:
     paths:
       - "paper/**"
       - "src/**"
       - "configs/**"
+      - "data/analysis_ready/desi_dr2_bao/**"
       - "scripts/reproduce.py"
+      - "scripts/reproduce_desi_dr2_bbn.py"
       - "workflows/reproduce.yaml"
+      - ".github/workflows/paper.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -23,23 +29,37 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install project
-        run: python -m pip install -e .
-      - name: Reproduce paper products
+          cache: pip
+      - name: Install full publication environment
+        run: python -m pip install -e '.[inference]'
+      - name: Reproduce baseline, topology, and layered products
         run: python scripts/reproduce.py
-      - name: Build manuscript
+      - name: Reproduce DESI chain and inference products
+        run: >-
+          python scripts/reproduce_desi_dr2_bbn.py
+          --download-official-chains
+          --aubourg-samples 128
+          --max-rminus1 0.01
+      - name: Build complete manuscript
         uses: xu-cheng/latex-action@v3
         with:
           root_file: main.tex
           working_directory: paper
           latexmk_use_xelatex: false
-      - name: Upload manuscript
+      - name: Upload manuscript and generated evidence
         uses: actions/upload-artifact@v4
         with:
           name: scpc-paper
-          path: paper/main.pdf
+          path: |
+            paper/main.pdf
+            paper/generated
+            results/desi_dr2_bbn/inference_summary.json
+            results/scpc_verification
+            results/layered_test
+          if-no-files-found: error
