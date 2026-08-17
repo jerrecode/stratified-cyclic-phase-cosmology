@@ -1,12 +1,20 @@
 \section{Computational results}
-\subsection{Canonical background: a converged non-cycle}
-The configured initial state satisfies the closed-FLRW constraint and selects the expanding branch. Over $0\le t\le8\,\Mpl^{-1}$, the scale factor grows from $1$ to $3.949\times10^3$, $H$ grows from $0.426$ to $1.080$ in natural units, and the scalar relaxes toward the potential minimum. No root-localized bounce or turnaround is detected. The maximum normalized Friedmann residual is $8.75\times10^{-11}$; the stored medium-tolerance solution differs from the reference by at most $4.66\times10^{-8}$, and the RK45 solution differs from DOP853 by at most $5.17\times10^{-9}$. These values satisfy the predeclared numerical gates by large margins. They establish numerical consistency of this trajectory, not physical viability or recurrence.
+\subsection{Canonical background: converged and analytically excluded from future recurrence}
+The configured initial state satisfies the closed-FLRW constraint and selects the expanding branch. Over $0\le t\le8\,\Mpl^{-1}$, the scale factor grows from $1$ to $3.949\times10^3$, $H$ grows from $0.426$ to $1.080$ in natural units, and the scalar relaxes toward the potential minimum. No root-localized bounce or turnaround is detected. The maximum normalized Friedmann residual is $8.75\times10^{-11}$; the stored medium-tolerance solution differs from the reference by at most $4.66\times10^{-8}$, and the RK45 solution differs from DOP853 by at most $5.17\times10^{-9}$. These values satisfy the predeclared numerical gates by large margins.
+
+The absence of a turning event is stronger than a finite-time numerical observation for this particular baseline. Its periodic potential has $V_{\min}=3.5\Mpl^4$, so Eq.~\eqref{eq:turning-upper-bound} requires every regular closed-FLRW turning point to obey
+\begin{equation}
+a_\star\le\sqrt{3/3.5}=0.9258\ldots .
+\end{equation}
+The baseline instead begins at $a_0=1$ with $H_0>0$. Until a first future turnaround, $a$ can only increase, and therefore it can never re-enter the analytically allowed turning region. The expanding canonical baseline is consequently excluded from every future regular turnaround and hence from future cyclic recurrence, independently of the choice $t_{\rm end}=8\,\Mpl^{-1}$. The machine-readable turning-feasibility certificate records this exclusion separately from numerical convergence and physical-domain termination. This result falsifies recurrence for the configured baseline trajectory; it does not falsify every point in the broader parameter family.
+
+The stronger Stage~1 recurrence-candidate audit is intentionally applied as a hypothesis test rather than a promotion step. Because this baseline has no turning events, it cannot supply the minimum two same-kind return metrics required to enter Stage~2. No Poincare/Floquet stability claim is therefore made for it.
 
 \IfFileExists{generated/scpc_baseline_background.png}{
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.92\linewidth]{generated/scpc_baseline_background.png}
-\caption{Canonical \SCPC{} baseline. The scale factor is shown as $N=\ln a$ so early evolution is not visually compressed; the $H=0$ reference makes the absence of a turning event explicit; and the lower-right panel shows $|\epsilon_F|$. No $H=0$ event occurs on the declared interval.}
+\caption{Canonical \SCPC{} baseline. The scale factor is shown as $N=\ln a$ so early evolution is not visually compressed; the $H=0$ reference makes the absence of a turning event explicit; and the lower-right panel shows $|\epsilon_F|$. In addition to the finite-time integration shown here, the positive potential floor yields the analytic upper bound $a_\star\le0.9258$ for any regular turning point, below the expanding initial state $a_0=1$.}
 \label{fig:scpc-baseline}
 \end{figure}}{}
 
