@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+import re
+import subprocess
 
 import numpy as np
 import pytest
@@ -45,6 +48,36 @@ def test_pinned_desi_files_have_expected_dimensions() -> None:
     assert covariance.shape == (13, 13)
     assert rows[0].redshift == 0.295
     assert rows[-1].quantity == "DM_over_rs"
+
+
+def test_desi_chain_pin_manifest_is_complete_and_well_formed() -> None:
+    manifest = json.loads(Path("configs/inference/desi_dr2_chain_pins.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 1
+    assert manifest["hash_algorithm"] == "sha256"
+    products = manifest["products"]
+    assert len(products) == 14
+    expected_datasets = {"desi-bao-all", "desi-bao-all_schoneberg2024-bbn"}
+    assert {product["dataset"] for product in products} == expected_datasets
+    expected_files = {
+        "chain.1.txt",
+        "chain.2.txt",
+        "chain.3.txt",
+        "chain.4.txt",
+        "chain.checkpoint",
+        "chain.covmat",
+        "chain.updated.yaml",
+    }
+    keys = {(product["dataset"], product["filename"]) for product in products}
+    assert len(keys) == len(products)
+    for dataset in expected_datasets:
+        assert {filename for ds, filename in keys if ds == dataset} == expected_files
+    for product in products:
+        assert isinstance(product["bytes"], int) and product["bytes"] > 0
+        assert re.fullmatch(r"[0-9a-f]{64}", product["sha256"])
+
+
+def test_desi_prefetch_script_has_valid_bash_syntax() -> None:
+    subprocess.run(["bash", "-n", "scripts/prefetch_desi_dr2_chains.sh"], check=True)
 
 
 def test_aubourg_crosscheck_returns_physical_drag_scale() -> None:
