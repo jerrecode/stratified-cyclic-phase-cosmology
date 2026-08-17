@@ -8,8 +8,9 @@ stability, perturbative-viability, or observational-support claim.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 
