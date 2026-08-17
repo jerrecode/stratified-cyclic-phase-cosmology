@@ -3,16 +3,56 @@
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.82\linewidth]{generated/hubble_comparison.png}
-\caption{Background expansion functions generated on a common redshift grid for standard comparison models. Parameter values are illustrative configuration inputs, not fitted results.}
+\caption{Background expansion functions generated on a common redshift grid for standard
+comparison models. Parameter values are illustrative configuration inputs, not fitted results.}
 \label{fig:hubble-comparison}
+\end{figure}}{}
+
+\IfFileExists{generated/desi_dr2_bao_bbn_posteriors.png}{
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{generated/desi_dr2_bao_bbn_posteriors.png}
+\caption{DESI DR2 2025 BAO and BBN constraints in flat $\Lambda$CDM. The upper panels are
+marginalized posterior contours from the official released DESI MCMC chains: BAO-only in the
+$(\Omega_m,h\,r_d)$ plane and BBN-calibrated BAO in $(\Omega_m,H_0)$. The lower-left panel is a
+model-implied posterior-predictive expansion history over the DESI BAO redshift lever arm; it is
+not a continuous measurement of $H(z)$. The lower-right panel is a CAMB background calculation
+showing $\Omega_{cb}$, $\Omega_\gamma$, total $\Omega_\nu$, and $\Omega_\Lambda$, so the massive
+neutrino is not forced to scale as nonrelativistic matter at early times. The analysis uses the
+pinned Results I/II likelihood; the later 2026 Lyman-$\alpha$ AP+BAO update is not combined without
+a release-native joint product.}
+\label{fig:desi-dr2-bbn-posteriors}
 \end{figure}}{}
 
 \IfFileExists{generated/scpc_baseline_background.png}{
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.9\linewidth]{generated/scpc_baseline_background.png}
-\caption{Canonical \SCPC{} baseline trajectory and Friedmann-constraint diagnostic. This run validates the pipeline and is not asserted to be cyclic.}
+\caption{Canonical \SCPC{} baseline trajectory and Friedmann-constraint diagnostic. This run
+validates the pipeline and is not asserted to be cyclic.}
 \label{fig:scpc-baseline}
 \end{figure}}{}
 
-\todo{Replace pipeline-validation figures with converged parameter scans, event classifications, and stability results.}
+\IfFileExists{generated/kinematic_diagnostics.png}{
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.72\linewidth]{generated/kinematic_diagnostics.png}
+\caption{Supplementary flat-$\Lambda$CDM kinematics. The equation-of-state curve is explicitly
+$w_{\rm tot}=p_{\rm tot}/\rho_{\rm tot}$ rather than a dark-energy equation of state. The reference
+lines $q=0$ and $w_{\rm tot}=-1/3$ identify the same acceleration transition in flat GR, which is
+why this diagnostic is supplementary rather than a principal inference panel.}
+\label{fig:kinematic-diagnostics}
+\end{figure}}{}
+
+\IfFileExists{generated/sound_horizon_backend_validation.png}{
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.72\linewidth]{generated/sound_horizon_backend_validation.png}
+\caption{Supplementary numerical validation of the Aubourg et al. sound-horizon approximation
+against CAMB on BBN-calibrated posterior draws. The approximation is a cross-check only and is not
+the inference backend.}
+\label{fig:sound-horizon-validation}
+\end{figure}}{}
+
+\todo{Replace pipeline-validation figures with converged parameter scans, event classifications,
+and stability results once a recurrent SCPC background has passed those gates.}
