@@ -1,4 +1,4 @@
-"""Publication-oriented DESI DR2 + BBN posterior and background figures."""
+"""Publication-oriented DESI DR2 + BBN posterior and validation figures."""
 
 from __future__ import annotations
 
@@ -7,12 +7,10 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import gaussian_filter
 
 from scpc.inference.camb_background import CambLCDMParameters, background_history, build_camb_background
 from scpc.inference.desi_chains import ChainSet, weighted_correlation, weighted_mean, weighted_quantile
-
-DESI_EFFECTIVE_REDSHIFTS = np.asarray([0.295, 0.510, 0.706, 0.934, 1.321, 1.484, 2.330])
+from scpc.inference.desi_likelihood import DESIDR2BAOLikelihood
 
 
 @dataclass(frozen=True)
@@ -28,80 +26,151 @@ def summarize(values: np.ndarray, weights: np.ndarray) -> PosteriorSummary:
     return PosteriorSummary(weighted_mean(values, weights), float(q16), float(median), float(q84))
 
 
-def _density_grid(x: np.ndarray, y: np.ndarray, weights: np.ndarray, n: int = 160):
-    """Weighted posterior-density grid from the complete chain."""
-    x_lo, x_hi = weighted_quantile(x, weights, (0.001, 0.999))
-    y_lo, y_hi = weighted_quantile(y, weights, (0.001, 0.999))
-    pad_x = 0.08 * (x_hi - x_lo)
-    pad_y = 0.08 * (y_hi - y_lo)
-    x_edges = np.linspace(x_lo - pad_x, x_hi + pad_x, n + 1)
-    y_edges = np.linspace(y_lo - pad_y, y_hi + pad_y, n + 1)
-    histogram, _, _ = np.histogram2d(x, y, bins=(x_edges, y_edges), weights=weights)
-    density = gaussian_filter(histogram.T, sigma=2.0, mode="nearest")
-    gx = 0.5 * (x_edges[:-1] + x_edges[1:])
-    gy = 0.5 * (y_edges[:-1] + y_edges[1:])
-    xx, yy = np.meshgrid(gx, gy)
-    flat = density.ravel()
-    order = np.argsort(flat)[::-1]
-    cumulative = np.cumsum(flat[order])
-    cumulative /= cumulative[-1]
-    thresholds = {}
-    for probability in (0.68, 0.95):
-        thresholds[probability] = float(flat[order[np.searchsorted(cumulative, probability)]])
-    return xx, yy, density, thresholds
+def _canonical(name: str) -> str:
+    return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
-def _draw_contours(ax, x: np.ndarray, y: np.ndarray, weights: np.ndarray, *, xlabel: str, ylabel: str) -> None:
-    xx, yy, density, thresholds = _density_grid(x, y, weights)
-    levels = [thresholds[0.95], thresholds[0.68], float(np.max(density))]
-    ax.contourf(xx, yy, density, levels=levels, alpha=0.35)
-    ax.contour(xx, yy, density, levels=levels[:-1], linewidths=1.2)
-    ax.text(0.97, 0.96, "68%, 95% HPD", transform=ax.transAxes, ha="right", va="top", fontsize=8)
+def getdist_parameter_name(samples, *aliases: str) -> str:
+    names = [item.name for item in samples.getParamNames().names]
+    lookup = {_canonical(name): name for name in names}
+    for alias in aliases:
+        key = _canonical(alias)
+        if key in lookup:
+            return lookup[key]
+    raise KeyError(f"None of {aliases!r} found in GetDist parameters {names!r}")
+
+
+def add_getdist_derived(samples, values: np.ndarray, name: str, label: str) -> str:
+    """Add one derived vector to a GetDist sample object unless already present."""
+    try:
+        return getdist_parameter_name(samples, name)
+    except KeyError:
+        pass
+    vector = np.asarray(values, dtype=float)
+    if vector.shape != (samples.numrows,):
+        raise ValueError(f"Derived parameter {name} has shape {vector.shape}; expected {(samples.numrows,)}")
+    samples.addDerived(vector, name=name, label=label)
+    return name
+
+
+def _draw_getdist_contours(ax, samples, x_name: str, y_name: str, *, xlabel: str, ylabel: str) -> None:
+    """Draw GetDist's autocorrelation-aware KDE and 68/95 percent credible regions."""
+    density = samples.get2DDensityGridData(x_name, y_name, num_plot_contours=2)
+    if density is None or density.contours is None or len(density.contours) < 2:
+        raise RuntimeError(f"GetDist could not construct two contours for {x_name}, {y_name}")
+    xx, yy = np.meshgrid(density.x, density.y)
+    contour_levels = sorted(float(value) for value in density.contours[:2])
+    fill_levels = [contour_levels[0], contour_levels[1], float(np.nanmax(density.P))]
+    ax.contourf(xx, yy, density.P, levels=fill_levels, alpha=0.35)
+    ax.contour(xx, yy, density.P, levels=contour_levels, linewidths=1.2)
+    ax.text(0.97, 0.96, "68%, 95% marginalized", transform=ax.transAxes, ha="right", va="top", fontsize=8)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(alpha=0.2)
 
 
-def _resample_indices(weights: np.ndarray, count: int, seed: int = 23117) -> np.ndarray:
-    rng = np.random.default_rng(seed)
-    probability = np.asarray(weights, dtype=float)
-    probability /= probability.sum()
-    return rng.choice(probability.size, size=count, replace=True, p=probability)
+def _posterior_subset(chain: ChainSet, maximum: int = 8000) -> tuple[np.ndarray, np.ndarray]:
+    count = chain.weights.size
+    if count <= maximum:
+        indices = np.arange(count)
+    else:
+        indices = np.unique(np.linspace(0, count - 1, maximum, dtype=int))
+    return indices, chain.weights[indices]
 
 
-def _low_z_hubble(samples: ChainSet, z: np.ndarray, *, count: int = 6000) -> np.ndarray:
-    """Posterior draws of H(z) over the DESI BAO range.
+def _flat_lcdm_bao_predictions(
+    likelihood: DESIDR2BAOLikelihood,
+    H0: np.ndarray,
+    omega_m: np.ndarray,
+    r_drag: np.ndarray,
+) -> np.ndarray:
+    """Vectorized low-z flat-LCDM BAO prediction used only for posterior predictive checks.
 
-    At z<=2.33 the radiation contribution is negligible and the 0.06 eV neutrino is
-    non-relativistic. The high-redshift panel is generated separately from CAMB and
-    therefore does not use this low-z closure approximation.
+    Radiation is negligible over the DESI BAO redshift range.  The independent CAMB MAP
+    calculation remains the regression backend for the exact published likelihood check.
     """
-    indices = _resample_indices(samples.weights, min(count, max(1000, samples.weights.size)))
-    H0 = samples.h0()[indices, None]
-    omega_m = samples.omega_m()[indices, None]
-    zp1 = 1.0 + np.asarray(z, dtype=float)[None, :]
-    return H0 * np.sqrt(omega_m * zp1**3 + (1.0 - omega_m))
+    H0 = np.asarray(H0, dtype=float)
+    omega_m = np.asarray(omega_m, dtype=float)
+    r_drag = np.asarray(r_drag, dtype=float)
+    z_unique = likelihood.unique_redshifts
+    nodes, weights = np.polynomial.legendre.leggauss(48)
+    c_km_s = 299792.458
+    dm = np.empty((H0.size, z_unique.size), dtype=float)
+    dh = np.empty_like(dm)
+    dv = np.empty_like(dm)
+    for j, z in enumerate(z_unique):
+        integration_z = 0.5 * z * (nodes + 1.0)
+        e_grid = np.sqrt(omega_m[:, None] * (1.0 + integration_z[None, :]) ** 3 + (1.0 - omega_m[:, None]))
+        integral = 0.5 * z * np.sum(weights[None, :] / e_grid, axis=1)
+        dm[:, j] = c_km_s / H0 * integral
+        e_here = np.sqrt(omega_m * (1.0 + z) ** 3 + (1.0 - omega_m))
+        dh[:, j] = c_km_s / (H0 * e_here)
+        dv[:, j] = np.cbrt(z * dh[:, j] * dm[:, j] ** 2)
+    index = {float(z): j for j, z in enumerate(z_unique)}
+    prediction = np.empty((H0.size, len(likelihood.rows)), dtype=float)
+    for j, row in enumerate(likelihood.rows):
+        k = index[row.redshift]
+        if row.quantity == "DM_over_rs":
+            prediction[:, j] = dm[:, k] / r_drag
+        elif row.quantity == "DH_over_rs":
+            prediction[:, j] = dh[:, k] / r_drag
+        elif row.quantity == "DV_over_rs":
+            prediction[:, j] = dv[:, k] / r_drag
+        else:  # pragma: no cover - likelihood loader validates supported quantities
+            raise ValueError(f"Unsupported BAO observable {row.quantity}")
+    return prediction
+
+
+def _whitened_posterior_predictive(
+    chain: ChainSet,
+    likelihood: DESIDR2BAOLikelihood,
+    *,
+    maximum: int = 8000,
+) -> tuple[np.ndarray, np.ndarray]:
+    indices, weights = _posterior_subset(chain, maximum=maximum)
+    prediction = _flat_lcdm_bao_predictions(
+        likelihood,
+        chain.h0()[indices],
+        chain.omega_m()[indices],
+        chain.r_drag_mpc()[indices],
+    )
+    residual = prediction - likelihood.data[None, :]
+    whitened = np.linalg.solve(likelihood.cholesky, residual.T).T
+    return whitened, weights
+
+
+def _column_quantiles(matrix: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, ...]:
+    results = [
+        weighted_quantile(matrix[:, j], weights, (0.025, 0.16, 0.5, 0.84, 0.975))
+        for j in range(matrix.shape[1])
+    ]
+    return tuple(np.asarray(results).T)
 
 
 def make_main_figure(
     bao_chain: ChainSet,
     bbn_chain: ChainSet,
+    bao_getdist,
+    bbn_getdist,
+    likelihood: DESIDR2BAOLikelihood,
     output: Path,
     *,
     map_result: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    """Create the four-panel publication figure recommended by the scientific audit."""
+    """Create the principal reproduction/validation figure."""
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(2, 2, figsize=(12.8, 9.3), constrained_layout=True)
-    ax_bao, ax_bbn, ax_h, ax_early = axes.ravel()
+    fig, axes = plt.subplots(2, 2, figsize=(13.2, 9.6), constrained_layout=True)
+    ax_bao, ax_bbn, ax_resid, ax_early = axes.ravel()
 
     omega_m_bao = bao_chain.omega_m()
     hrd_bao = bao_chain.h_r_drag_mpc()
-    _draw_contours(
+    omega_m_bao_name = getdist_parameter_name(bao_getdist, "omegam", "omega_m", "Omega_m")
+    hrd_name = add_getdist_derived(bao_getdist, hrd_bao, "h_r_drag", r"h r_d")
+    _draw_getdist_contours(
         ax_bao,
-        omega_m_bao,
-        hrd_bao,
-        bao_chain.weights,
+        bao_getdist,
+        omega_m_bao_name,
+        hrd_name,
         xlabel=r"$\Omega_m$",
         ylabel=r"$h\,r_d\;[\mathrm{Mpc}]$",
     )
@@ -111,40 +180,40 @@ def make_main_figure(
 
     omega_m_bbn = bbn_chain.omega_m()
     H0_bbn = bbn_chain.h0()
-    _draw_contours(
+    omega_m_bbn_name = getdist_parameter_name(bbn_getdist, "omegam", "omega_m", "Omega_m")
+    H0_name = getdist_parameter_name(bbn_getdist, "H0", "hubble")
+    _draw_getdist_contours(
         ax_bbn,
-        omega_m_bbn,
-        H0_bbn,
-        bbn_chain.weights,
+        bbn_getdist,
+        omega_m_bbn_name,
+        H0_name,
         xlabel=r"$\Omega_m$",
         ylabel=r"$H_0\;[\mathrm{km\,s^{-1}\,Mpc^{-1}}]$",
     )
     ax_bbn.set_title("DESI DR2 BAO + BBN posterior")
 
-    z = np.linspace(0.0, 2.55, 220)
-    h_draws = _low_z_hubble(bbn_chain, z)
-    median_curve = np.median(h_draws, axis=0)
-    residual = h_draws / median_curve[None, :] - 1.0
-    q025, q16, q84, q975 = np.percentile(residual, [2.5, 16.0, 84.0, 97.5], axis=0)
-    ax_h.fill_between(z, 100.0 * q025, 100.0 * q975, alpha=0.16, label="95% credible band")
-    ax_h.fill_between(z, 100.0 * q16, 100.0 * q84, alpha=0.30, label="68% credible band")
-    ax_h.axhline(0.0, linewidth=1.0)
-    ax_h.axvspan(DESI_EFFECTIVE_REDSHIFTS.min(), DESI_EFFECTIVE_REDSHIFTS.max(), alpha=0.07)
-    for zeff in DESI_EFFECTIVE_REDSHIFTS:
-        ax_h.axvline(zeff, linewidth=0.6, alpha=0.35)
-    ax_h.set_xlabel("Redshift $z$")
-    ax_h.set_ylabel(r"$100\,[H(z)/H_{\rm med}(z)-1]$ [%]")
-    ax_h.set_title("Posterior-implied expansion over the DESI BAO lever arm")
-    ax_h.legend(fontsize=8, loc="upper right")
-    ax_h.grid(alpha=0.2)
+    whitened, pp_weights = _whitened_posterior_predictive(bbn_chain, likelihood)
+    q025, q16, median, q84, q975 = _column_quantiles(whitened, pp_weights)
+    x = np.arange(1, whitened.shape[1] + 1)
+    ax_resid.fill_between(x, q025, q975, alpha=0.16, label="95% posterior interval")
+    ax_resid.fill_between(x, q16, q84, alpha=0.30, label="68% posterior interval")
+    ax_resid.plot(x, median, marker="o", linewidth=1.0, markersize=3.5, label="posterior median")
+    ax_resid.axhline(0.0, linewidth=1.0)
+    labels = [f"{row.quantity.split('_')[0]}\n{row.redshift:.3g}" for row in likelihood.rows]
+    ax_resid.set_xticks(x, labels, fontsize=7)
+    ax_resid.set_ylabel(r"Whitened residual $[L^{-1}(m-d)]_i$")
+    ax_resid.set_xlabel("DESI observable and effective redshift")
+    ax_resid.set_title("Full-covariance posterior predictive check")
+    ax_resid.legend(fontsize=8, loc="upper right")
+    ax_resid.grid(alpha=0.2)
     if map_result is not None:
-        ax_h.text(
-            0.03,
+        ax_resid.text(
+            0.02,
             0.04,
-            rf"Pinned-likelihood MAP: $\chi^2_{{\rm BAO}}/\nu="
+            rf"Independent CAMB MAP: $\chi^2_{{\rm BAO}}/\nu="
             rf"{float(map_result['chi_square_bao']):.2f}/{int(map_result['bao_degrees_of_freedom'])}$, "
             rf"$p={float(map_result['bao_goodness_of_fit_p_value']):.3f}$",
-            transform=ax_h.transAxes,
+            transform=ax_resid.transAxes,
             fontsize=8,
         )
 
@@ -156,38 +225,49 @@ def make_main_figure(
         omega_m=om_summary.median,
         omega_b_h2=ob_summary.median,
     )
-    z_early = np.geomspace(1.0e-4, 1.0e5, 600) - 1.0e-4
+    z_early = np.geomspace(1.0e-4, 1.0e5, 700) - 1.0e-4
     history = background_history(central, z_early)
-    x = 1.0 + z_early
-    ax_early.semilogx(x, history["omega_cb"], label=r"$\Omega_{cb}$")
-    ax_early.semilogx(x, history["omega_gamma"], label=r"$\Omega_\gamma$")
-    ax_early.semilogx(x, history["omega_nu"], label=r"$\Omega_\nu$")
-    ax_early.semilogx(x, history["omega_lambda"], label=r"$\Omega_\Lambda$")
+    zp1 = 1.0 + z_early
+    ax_early.semilogx(zp1, history["omega_cb"], label=r"$\Omega_{cb}$")
+    ax_early.semilogx(zp1, history["omega_gamma"], label=r"$\Omega_\gamma$")
+    ax_early.semilogx(zp1, history["omega_nu_massless"], label=r"$\Omega_{\nu,\rm massless}$")
+    ax_early.semilogx(zp1, history["omega_nu_massive"], label=r"$\Omega_{\nu,\rm massive}$")
+    ax_early.semilogx(zp1, history["omega_lambda"], label=r"$\Omega_\Lambda$")
     marker_specs = (
-        ("z_acc", r"$z_{\rm acc}$", 0.98),
-        ("z_drag", r"$z_d$", 0.86),
-        ("z_star", r"$z_*$", 0.74),
-        ("z_eq", r"$z_{\rm eq}$", 0.62),
+        ("z_acc", r"$z_{\rm acc}$", 0.98, "right"),
+        ("z_nu_thermal", r"$z_{\nu,\rm th}$", 0.88, "right"),
+        ("z_drag", r"$z_d$", 0.77, "right"),
+        ("z_star", r"$z_*$", 0.66, "left"),
+        ("z_eq", r"$z_{\rm eq}$", 0.55, "right"),
     )
-    for key, label, text_y in marker_specs:
+    for key, label, text_y, horizontal in marker_specs:
         value = float(history[key])
         if np.isfinite(value) and value >= 0:
-            ax_early.axvline(1.0 + value, linewidth=0.8, linestyle="--", alpha=0.65)
-            ax_early.text(1.0 + value, text_y, label, rotation=90, va="top", ha="right", fontsize=8)
+            ax_early.axvline(1.0 + value, linewidth=0.8, linestyle="--", alpha=0.55)
+            ax_early.text(
+                1.0 + value,
+                text_y,
+                label,
+                rotation=90,
+                va="top",
+                ha=horizontal,
+                fontsize=7.5,
+            )
     ax_early.set_ylim(-0.02, 1.03)
     ax_early.set_xlabel(r"$1+z$")
     ax_early.set_ylabel("Fraction of critical density")
-    ax_early.set_title("CAMB background with massive-neutrino transition")
-    ax_early.legend(fontsize=8, ncol=2)
+    ax_early.set_title("CAMB species fractions and characteristic epochs")
+    ax_early.legend(fontsize=7.5, ncol=2)
     ax_early.grid(alpha=0.2)
 
     fig.suptitle(
-        r"DESI DR2 BAO + BBN constraints in flat $\Lambda$CDM (2025 Results I/II likelihood)",
-        fontsize=15,
+        r"Reproduction of DESI DR2 BAO + BBN flat-$\Lambda$CDM constraints (2025 Results I/II likelihood)",
+        fontsize=14,
     )
     fig.savefig(output, dpi=220, bbox_inches="tight")
     plt.close(fig)
 
+    median_whitened_chi2 = float(np.sum(median**2))
     return {
         "bao_only": {
             "omega_m": summarize(omega_m_bao, bao_chain.weights).__dict__,
@@ -199,12 +279,18 @@ def make_main_figure(
             "H0": H0_summary.__dict__,
             "omega_b_h2": ob_summary.__dict__,
         },
+        "posterior_predictive": {
+            "whitened_residual_median": median.tolist(),
+            "median_vector_squared_norm": median_whitened_chi2,
+            "draws_used": int(whitened.shape[0]),
+        },
         "camb_central": {
             "H0": central.H0,
             "omega_m": central.omega_m,
             "omega_b_h2": central.omega_b_h2,
             "r_drag_Mpc": float(history["r_drag_Mpc"]),
             "z_acc": float(history["z_acc"]),
+            "z_nu_thermal": float(history["z_nu_thermal"]),
             "z_drag": float(history["z_drag"]),
             "z_star": float(history["z_star"]),
             "z_eq": float(history["z_eq"]),
@@ -212,38 +298,41 @@ def make_main_figure(
     }
 
 
-def make_kinematic_figure(bbn_chain: ChainSet, output: Path) -> dict[str, float]:
-    """Move the redundant q/w_tot diagnostic to a clearly labeled supplementary figure."""
+def posterior_kinematics(bbn_chain: ChainSet) -> dict[str, object]:
+    """Propagate the released flat-LCDM posterior into low-z kinematic summaries."""
+    om = bbn_chain.omega_m()
+    weights = bbn_chain.weights
+    q0 = 1.5 * om - 1.0
+    w_tot0 = om - 1.0
+    z_acc = np.cbrt(2.0 * (1.0 - om) / om) - 1.0
+    return {
+        "q0": summarize(q0, weights).__dict__,
+        "w_tot0": summarize(w_tot0, weights).__dict__,
+        "z_acc": summarize(z_acc, weights).__dict__,
+        "relation": "late-time flat-LambdaCDM approximation; radiation is negligible at z~0",
+    }
+
+
+def make_kinematic_figure(bbn_chain: ChainSet, output: Path) -> dict[str, object]:
+    """Generate a supplementary posterior distribution for the acceleration transition."""
     output.parent.mkdir(parents=True, exist_ok=True)
-    central = CambLCDMParameters(
-        H0=float(weighted_quantile(bbn_chain.h0(), bbn_chain.weights, (0.5,))[0]),
-        omega_m=float(weighted_quantile(bbn_chain.omega_m(), bbn_chain.weights, (0.5,))[0]),
-        omega_b_h2=float(weighted_quantile(bbn_chain.omega_b_h2(), bbn_chain.weights, (0.5,))[0]),
-    )
-    _, results = build_camb_background(central)
-    z = np.linspace(0.0, 3.0, 500)
-    H = np.asarray(results.hubble_parameter(z), dtype=float)
-    dH_dz = np.gradient(H, z, edge_order=2)
-    q = (1.0 + z) * dH_dz / H - 1.0
-    w_tot = (2.0 * q - 1.0) / 3.0
-    fig, ax = plt.subplots(figsize=(7.0, 4.6), constrained_layout=True)
-    ax.plot(z, q, label=r"$q(z)$")
-    ax.plot(z, w_tot, label=r"$w_{\rm tot}(z)=p_{\rm tot}/\rho_{\rm tot}$")
-    ax.axhline(0.0, linewidth=0.9, label=r"$q=0$")
-    ax.axhline(-1.0 / 3.0, linewidth=0.9, linestyle="--", label=r"$w_{\rm tot}=-1/3$")
-    ax.set_xlabel("Redshift $z$")
-    ax.set_ylabel("Kinematic value")
-    ax.set_title(r"Supplementary flat-$\Lambda$CDM kinematics")
-    ax.legend(fontsize=8, ncol=2)
+    om = bbn_chain.omega_m()
+    z_acc = np.cbrt(2.0 * (1.0 - om) / om) - 1.0
+    summary = posterior_kinematics(bbn_chain)
+    fig, ax = plt.subplots(figsize=(6.8, 4.4), constrained_layout=True)
+    bins = np.linspace(*weighted_quantile(z_acc, bbn_chain.weights, (0.002, 0.998)), 70)
+    ax.hist(z_acc, bins=bins, weights=bbn_chain.weights, density=True, histtype="step", linewidth=1.4)
+    z_summary = summary["z_acc"]
+    ax.axvline(float(z_summary["median"]), linewidth=1.0, label="posterior median")
+    ax.axvspan(float(z_summary["q16"]), float(z_summary["q84"]), alpha=0.2, label="68% interval")
+    ax.set_xlabel(r"Acceleration-transition redshift $z_{\rm acc}$")
+    ax.set_ylabel("Posterior density")
+    ax.set_title(r"Supplementary DESI DR2 + BBN flat-$\Lambda$CDM kinematics")
+    ax.legend(fontsize=8)
     ax.grid(alpha=0.2)
     fig.savefig(output, dpi=220)
     plt.close(fig)
-    transition = np.nan
-    crossings = np.where(np.diff(np.signbit(q)))[0]
-    if crossings.size:
-        i = int(crossings[0])
-        transition = float(z[i] - q[i] * (z[i + 1] - z[i]) / (q[i + 1] - q[i]))
-    return {"q0": float(q[0]), "w_tot0": float(w_tot[0]), "z_acc_numeric": transition}
+    return summary
 
 
 def aubourg_r_drag_mpc(
@@ -263,10 +352,11 @@ def aubourg_r_drag_mpc(
     )
 
 
-def make_aubourg_validation_figure(bbn_chain: ChainSet, output: Path, *, samples: int = 48) -> dict[str, float]:
-    """Compare the legacy Aubourg approximation against CAMB at posterior draws."""
+def make_aubourg_validation_figure(bbn_chain: ChainSet, output: Path, *, samples: int = 128) -> dict[str, float]:
+    """Compare the legacy Aubourg approximation against CAMB on posterior-spanning draws."""
     output.parent.mkdir(parents=True, exist_ok=True)
-    indices = _resample_indices(bbn_chain.weights, max(8, int(samples)), seed=31891)
+    count = max(16, int(samples))
+    indices = np.unique(np.linspace(0, bbn_chain.weights.size - 1, count, dtype=int))
     H0 = bbn_chain.h0()[indices]
     omega_m = bbn_chain.omega_m()[indices]
     omega_b = bbn_chain.omega_b_h2()[indices]
@@ -276,13 +366,12 @@ def make_aubourg_validation_figure(bbn_chain: ChainSet, output: Path, *, samples
         _, results = build_camb_background(
             CambLCDMParameters(H0=float(H0[i]), omega_m=float(omega_m[i]), omega_b_h2=float(omega_b[i]))
         )
-        derived = results.get_derived_params()
-        exact[i] = float(derived["rdrag"])
+        exact[i] = float(results.get_derived_params()["rdrag"])
     fractional = approx / exact - 1.0
     fig, ax = plt.subplots(figsize=(7.0, 4.6), constrained_layout=True)
-    ax.scatter(omega_m, 100.0 * fractional, s=14, alpha=0.65)
+    ax.scatter(exact, 100.0 * fractional, s=12, alpha=0.60)
     ax.axhline(0.0, linewidth=0.9)
-    ax.set_xlabel(r"$\Omega_m$ posterior draw")
+    ax.set_xlabel(r"CAMB $r_d$ [Mpc]")
     ax.set_ylabel(r"$100\,(r_d^{\rm Aubourg}/r_d^{\rm CAMB}-1)$ [%]")
     ax.set_title("Supplementary sound-horizon backend validation")
     ax.grid(alpha=0.2)
@@ -293,4 +382,6 @@ def make_aubourg_validation_figure(bbn_chain: ChainSet, output: Path, *, samples
         "mean_fractional_difference": float(np.mean(fractional)),
         "rms_fractional_difference": float(np.sqrt(np.mean(fractional**2))),
         "max_abs_fractional_difference": float(np.max(np.abs(fractional))),
+        "r_drag_camb_min_Mpc": float(np.min(exact)),
+        "r_drag_camb_max_Mpc": float(np.max(exact)),
     }
