@@ -1,0 +1,148 @@
+name: Temporary PR11 turning-evidence fix 2
+
+on:
+  push:
+    branches:
+      - fix/pr11-turning-evidence-2026-08-17
+    paths:
+      - .github/workflows/pr11-turning-evidence-fix2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/pr11-turning-evidence-2026-08-17
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply review fixes and regression tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/pr11-turning-evidence-fix.yml').read_text(encoding='utf-8')
+          marker = "          python - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY\n", start)
+          script = textwrap.dedent(workflow[start:end])
+          needle = "    file = Path(path)\n"
+          replacement = (
+              "    if path == 'tests/test_scan_outcomes.py':\n"
+              "        return\n"
+              "    file = Path(path)\n"
+          )
+          if script.count(needle) != 1:
+              raise RuntimeError('Could not instrument PR11 patch helper exactly once')
+          script = script.replace(needle, replacement, 1)
+          exec(compile(script, '<pr11-turning-evidence-replay>', 'exec'), {'__name__': '__main__'})
+
+          test_file = Path('tests/test_scan_outcomes.py')
+          text = test_file.read_text(encoding='utf-8')
+          start_marker = '    event_states = np.empty((0, 4), dtype=float)\n'
+          end_marker = '    return SCPCSolution(\n'
+          start_at = text.index(start_marker)
+          end_at = text.index(end_marker, start_at)
+          fixture = '''    event_states = np.empty((0, 4), dtype=float)
+          if turning_kinds:
+              if turning_times is None or len(turning_times) != len(turning_kinds):
+                  raise ValueError("turning_times must match turning_kinds in the test fixture")
+              rows: list[list[float]] = []
+              for index, (event_time, event_kind) in enumerate(
+                  zip(event_times, turning_kinds, strict=True)
+              ):
+                  event_scale = float(np.interp(event_time, time, a))
+                  if event_kind == "bounce":
+                      event_velocity = 0.0
+                  elif event_kind == "turnaround":
+                      event_velocity = 2.0 / event_scale
+                  else:
+                      event_velocity = np.sqrt(2.0) / event_scale
+                  rows.append([event_scale, 0.0, 0.1 * index, float(event_velocity)])
+              event_states = np.asarray(rows, dtype=float)
+          '''
+          text = text[:start_at] + fixture + text[end_at:]
+          curvature = '            spatial_curvature_k=0,\n'
+          if text.count(curvature) < 1:
+              raise RuntimeError('Could not find synthetic outcome fixture curvature')
+          text = text.replace(curvature, '            spatial_curvature_k=1,\n', 1)
+          test_file.write_text(text, encoding='utf-8')
+
+          additions = '''
+
+          def test_noniterable_turning_kinds_are_result_integrity_errors() -> None:
+              solution = _solution(hubble=[0.3, 0.2, 0.1])
+              solution.turning_kinds = None  # type: ignore[assignment]
+              with pytest.raises(ResultIntegrityError, match="kinds must be iterable"):
+                  assess_solution(solution)
+
+
+          def test_turning_state_must_lie_on_hubble_zero_surface() -> None:
+              solution = _solution(
+                  hubble=[-0.2, 0.0, 0.2],
+                  turning_kinds=("bounce",),
+                  turning_times=[1.0],
+              )
+              assert solution.turning_state_vectors is not None
+              solution.turning_state_vectors[0, 1] = 1.0e-4
+              with pytest.raises(ResultIntegrityError, match="Hubble-zero"):
+                  assess_solution(solution)
+
+
+          def test_bounce_turning_state_must_have_positive_hubble_derivative() -> None:
+              solution = _solution(
+                  hubble=[-0.2, 0.0, 0.2],
+                  turning_kinds=("bounce",),
+                  turning_times=[1.0],
+              )
+              assert solution.turning_state_vectors is not None
+              event_scale = float(solution.turning_state_vectors[0, 0])
+              solution.turning_state_vectors[0, 3] = 2.0 / event_scale
+              with pytest.raises(ResultIntegrityError, match="sign of dH/dt"):
+                  assess_solution(solution)
+
+
+          def test_turnaround_turning_state_must_have_negative_hubble_derivative() -> None:
+              solution = _solution(
+                  hubble=[0.2, 0.0, -0.2],
+                  turning_kinds=("turnaround",),
+                  turning_times=[1.0],
+              )
+              assert solution.turning_state_vectors is not None
+              solution.turning_state_vectors[0, 3] = 0.0
+              with pytest.raises(ResultIntegrityError, match="sign of dH/dt"):
+                  assess_solution(solution)
+          '''
+          if 'def test_noniterable_turning_kinds_are_result_integrity_errors' not in text:
+              test_file.write_text(text + textwrap.dedent(additions), encoding='utf-8')
+
+          for path in ['src/scpc/scans/outcomes.py', 'tests/test_scan_outcomes.py']:
+              compile(Path(path).read_text(encoding='utf-8'), path, 'exec')
+          PY
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Validate complete suite
+        shell: bash
+        run: |
+          ruff check --fix src/scpc/scans/outcomes.py tests/test_scan_outcomes.py
+          ruff check src tests scripts
+          pytest -q
+      - name: Remove temporary workflows and commit
+        shell: bash
+        run: |
+          rm -f \
+            .github/workflows/pr11-turning-evidence-fix.yml \
+            .github/workflows/pr11-turning-evidence-fix2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: authenticate turning-event evidence"
+          git push origin HEAD:fix/pr11-turning-evidence-2026-08-17
