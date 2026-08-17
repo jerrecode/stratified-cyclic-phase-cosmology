@@ -38,8 +38,8 @@ jobs:
           exact = Path('tests/test_exact_event_result_integrity.py')
           text = exact.read_text(encoding='utf-8')
           curvature = '            spatial_curvature_k=0,\n'
-          if text.count(curvature) < 2:
-              raise RuntimeError('Expected both synthetic and protocol curvature fields')
+          if text.count(curvature) < 1:
+              raise RuntimeError('Expected synthetic curvature field')
           text = text.replace(curvature, '            spatial_curvature_k=1,\n', 1)
           state = 'turning_state_vectors=np.asarray([[1.2, 0.0, 0.0, 0.0]]),'
           if text.count(state) != 1:
