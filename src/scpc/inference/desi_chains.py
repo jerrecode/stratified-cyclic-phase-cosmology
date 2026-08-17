@@ -1,16 +1,18 @@
 """Download, validate, and analyse the official DESI DR2 cosmology chains.
 
-The released DESI chains remain external products.  Publication reproduction records
+The released DESI chains remain external products. Publication reproduction records
 both the sample files and the release-side metadata/checkpoint products, and uses
 GetDist for convergence diagnostics and marginalized densities.
 """
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Iterable
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import numpy as np
@@ -95,24 +97,67 @@ def chain_directory_url(model: str, dataset: str) -> str:
     return f"{DESI_DR2_CHAIN_ROOT}/{model}/{dataset}"
 
 
-def download_file(url: str, destination: Path, *, timeout: float = 120.0) -> dict[str, object]:
-    """Download one public product atomically and return provenance metadata."""
+def download_file(
+    url: str,
+    destination: Path,
+    *,
+    timeout: float = 30.0,
+    retries: int = 6,
+) -> dict[str, object]:
+    """Download one public product atomically with retry and HTTP Range resume.
+
+    The DESI public archive is occasionally slow from hosted CI regions. Partial data are
+    kept only in a ``.part`` file and retried with a Range request; the final path appears
+    only after EOF has been reached successfully. The returned checksum is always computed
+    over the completed local file.
+    """
+    if timeout <= 0 or retries < 1:
+        raise ValueError("timeout must be positive and retries must be at least one")
     destination.parent.mkdir(parents=True, exist_ok=True)
     pending = destination.with_suffix(destination.suffix + ".part")
-    request = Request(url, headers={"User-Agent": "scpc-reproducibility/2"})
-    with urlopen(request, timeout=timeout) as response, pending.open("wb") as out:  # noqa: S310
-        while True:
-            block = response.read(1024 * 1024)
-            if not block:
-                break
-            out.write(block)
-    pending.replace(destination)
-    return {
-        "url": url,
-        "path": str(destination),
-        "bytes": destination.stat().st_size,
-        "sha256": sha256_file(destination),
-    }
+    last_error: Exception | None = None
+
+    for attempt in range(1, retries + 1):
+        offset = pending.stat().st_size if pending.exists() else 0
+        headers = {
+            "User-Agent": "scpc-reproducibility/3",
+            "Accept-Encoding": "identity",
+        }
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        request = Request(url, headers=headers)
+        try:
+            with urlopen(request, timeout=timeout) as response:  # noqa: S310
+                status = int(getattr(response, "status", response.getcode()))
+                resumed = offset > 0 and status == 206
+                mode = "ab" if resumed else "wb"
+                with pending.open(mode) as out:
+                    while True:
+                        block = response.read(1024 * 1024)
+                        if not block:
+                            break
+                        out.write(block)
+            pending.replace(destination)
+            metadata = _file_metadata(destination, url)
+            metadata["download_attempts"] = attempt
+            metadata["resumed"] = bool(offset)
+            return metadata
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code == 416 and pending.exists():
+                # A stale/invalid range must never be promoted to the final path. Restart.
+                pending.unlink()
+            if 400 <= exc.code < 500 and exc.code not in {408, 416, 429}:
+                raise RuntimeError(f"Permanent HTTP error downloading {url}: {exc}") from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+
+        if attempt < retries:
+            time.sleep(min(2.0 ** (attempt - 1), 16.0))
+
+    raise RuntimeError(
+        f"Failed to download {url} after {retries} attempts; partial file retained at {pending}"
+    ) from last_error
 
 
 def _file_metadata(path: Path, url: str) -> dict[str, object]:
@@ -242,7 +287,7 @@ def select_converged_burn_fraction(
 ) -> tuple[float, object, dict[str, object]]:
     """Choose the earliest burn cut whose GetDist multivariate R-1 passes the declared threshold.
 
-    This replaces an unexplained fixed row cut with an auditable convergence rule.  The
+    This replaces an unexplained fixed row cut with an auditable convergence rule. The
     official ``chain.checkpoint`` is retained in provenance; GetDist independently checks
     the released sample files used for the plotted posterior.
     """
