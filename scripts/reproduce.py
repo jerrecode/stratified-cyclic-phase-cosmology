@@ -66,7 +66,8 @@ def _run_layered(output: Path) -> tuple[Path, Path, Path, Path]:
         "Gravitational backreaction & absent by construction \\\\\n"
         "\\bottomrule\n"
         "\\end{tabular}\n"
-        "\\caption{Numerical diagnostics for the fixed-$S^4$ scalar demonstrator. The energy uses the same face-gradient form as the finite-volume Laplacian.}\n"
+        "\\caption{Numerical diagnostics for the fixed-$S^4$ scalar demonstrator. "
+        "The energy uses the same face-gradient form as the finite-volume Laplacian.}\n"
         "\\label{tab:layered-diagnostic}\n"
         "\\end{table}\n",
         encoding="utf-8",
