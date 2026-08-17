@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 import numpy as np
 

@@ -1,22 +1,31 @@
-"""Download and read the official DESI DR2 cosmology-chain products.
+"""Download, validate, and analyse the official DESI DR2 cosmology chains.
 
-The chain products are external data. This module deliberately does not vendor them
-into the source tree: it records the exact public URLs and hashes downloaded files so
-that publication figures can be regenerated without silently substituting a local
-posterior approximation.
+The released DESI chains remain external products. Publication reproduction records
+both the sample files and the release-side metadata/checkpoint products, and uses
+GetDist for convergence diagnostics and marginalized densities.
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Iterable
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import numpy as np
 
 DESI_DR2_CHAIN_ROOT = "https://data.desi.lbl.gov/public/papers/y3/bao-cosmo-params/cobaya"
+# The DESI chain data model documents these products for standard (non-post-processed)
+# Cobaya chains. It documents input.yaml *or* updated.yaml; the DR2 products used here
+# provide the latter, so we do not invent auxiliary files such as margestats/progress.
+DESI_CHAIN_METADATA = (
+    "chain.checkpoint",
+    "chain.covmat",
+    "chain.updated.yaml",
+)
 
 
 @dataclass(frozen=True)
@@ -29,7 +38,6 @@ class ChainSet:
     source_files: tuple[Path, ...]
 
     def column(self, *aliases: str) -> np.ndarray:
-        """Return a parameter column, accepting common naming aliases."""
         canonical = {_canonical(name): i for i, name in enumerate(self.names)}
         for alias in aliases:
             key = _canonical(alias)
@@ -60,7 +68,6 @@ class ChainSet:
         return self.column("rdrag", "r_drag", "rd", "r_d")
 
     def h_r_drag_mpc(self) -> np.ndarray:
-        """Return h*r_d in Mpc, preferring a derived-chain column when available."""
         for aliases in (
             ("hrdrag", "h_rdrag", "h_rd", "h_r_d"),
             ("H0rdrag_over_100", "H0_rd_over_100"),
@@ -90,23 +97,74 @@ def chain_directory_url(model: str, dataset: str) -> str:
     return f"{DESI_DR2_CHAIN_ROOT}/{model}/{dataset}"
 
 
-def download_file(url: str, destination: Path, *, timeout: float = 120.0) -> dict[str, object]:
-    """Download one public product atomically and return provenance metadata."""
+def download_file(
+    url: str,
+    destination: Path,
+    *,
+    timeout: float = 30.0,
+    retries: int = 6,
+) -> dict[str, object]:
+    """Download one public product atomically with retry and HTTP Range resume.
+
+    The DESI public archive is occasionally slow from hosted CI regions. Partial data are
+    kept only in a ``.part`` file and retried with a Range request; the final path appears
+    only after EOF has been reached successfully. The returned checksum is always computed
+    over the completed local file.
+    """
+    if timeout <= 0 or retries < 1:
+        raise ValueError("timeout must be positive and retries must be at least one")
     destination.parent.mkdir(parents=True, exist_ok=True)
     pending = destination.with_suffix(destination.suffix + ".part")
-    request = Request(url, headers={"User-Agent": "scpc-reproducibility/1"})
-    with urlopen(request, timeout=timeout) as response, pending.open("wb") as out:  # noqa: S310
-        while True:
-            block = response.read(1024 * 1024)
-            if not block:
-                break
-            out.write(block)
-    pending.replace(destination)
+    last_error: Exception | None = None
+
+    for attempt in range(1, retries + 1):
+        offset = pending.stat().st_size if pending.exists() else 0
+        headers = {
+            "User-Agent": "scpc-reproducibility/3",
+            "Accept-Encoding": "identity",
+        }
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        request = Request(url, headers=headers)
+        try:
+            with urlopen(request, timeout=timeout) as response:  # noqa: S310
+                status = int(getattr(response, "status", response.getcode()))
+                resumed = offset > 0 and status == 206
+                mode = "ab" if resumed else "wb"
+                with pending.open(mode) as out:
+                    while True:
+                        block = response.read(1024 * 1024)
+                        if not block:
+                            break
+                        out.write(block)
+            pending.replace(destination)
+            metadata = _file_metadata(destination, url)
+            metadata["download_attempts"] = attempt
+            metadata["resumed"] = bool(offset)
+            return metadata
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code == 416 and pending.exists():
+                pending.unlink()
+            if 400 <= exc.code < 500 and exc.code not in {408, 416, 429}:
+                raise RuntimeError(f"Permanent HTTP error downloading {url}: {exc}") from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+
+        if attempt < retries:
+            time.sleep(min(2.0 ** (attempt - 1), 16.0))
+
+    raise RuntimeError(
+        f"Failed to download {url} after {retries} attempts; partial file retained at {pending}"
+    ) from last_error
+
+
+def _file_metadata(path: Path, url: str) -> dict[str, object]:
     return {
         "url": url,
-        "path": str(destination),
-        "bytes": destination.stat().st_size,
-        "sha256": sha256_file(destination),
+        "path": str(path),
+        "bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
     }
 
 
@@ -118,7 +176,7 @@ def ensure_official_chain_set(
     chain_numbers: Iterable[int] = (1, 2, 3, 4),
     download: bool = False,
 ) -> tuple[list[Path], list[dict[str, object]]]:
-    """Resolve the four official chain files, optionally downloading missing files."""
+    """Resolve the official chain sample files, optionally downloading missing files."""
     target = root / model / dataset
     base_url = chain_directory_url(model, dataset)
     paths: list[Path] = []
@@ -128,21 +186,35 @@ def ensure_official_chain_set(
         url = f"{base_url}/chain.{number}.txt"
         if not path.exists():
             if not download:
-                raise FileNotFoundError(
-                    f"Missing {path}. Re-run with official-chain download enabled; source is {url}"
-                )
+                raise FileNotFoundError(f"Missing {path}; official source is {url}")
             provenance.append(download_file(url, path))
         else:
-            provenance.append(
-                {
-                    "url": url,
-                    "path": str(path),
-                    "bytes": path.stat().st_size,
-                    "sha256": sha256_file(path),
-                }
-            )
+            provenance.append(_file_metadata(path, url))
         paths.append(path)
     return paths, provenance
+
+
+def ensure_official_chain_metadata(
+    root: Path,
+    *,
+    model: str,
+    dataset: str,
+    download: bool = False,
+) -> list[dict[str, object]]:
+    """Resolve documented release-side chain metadata with checksums."""
+    target = root / model / dataset
+    base_url = chain_directory_url(model, dataset)
+    provenance: list[dict[str, object]] = []
+    for filename in DESI_CHAIN_METADATA:
+        path = target / filename
+        url = f"{base_url}/{filename}"
+        if not path.exists():
+            if not download:
+                raise FileNotFoundError(f"Missing {path}; official source is {url}")
+            provenance.append(download_file(url, path))
+        else:
+            provenance.append(_file_metadata(path, url))
+    return provenance
 
 
 def _header_names(path: Path) -> tuple[str, ...]:
@@ -158,7 +230,7 @@ def _header_names(path: Path) -> tuple[str, ...]:
 
 
 def load_cobaya_chains(paths: Iterable[Path], *, burn_fraction: float = 0.0) -> ChainSet:
-    """Read compatible Cobaya text chains and discard burn-in per chain by row count."""
+    """Read compatible Cobaya text chains and discard a declared fraction per chain."""
     if not 0.0 <= burn_fraction < 1.0:
         raise ValueError("burn_fraction must lie in [0, 1)")
     arrays: list[np.ndarray] = []
@@ -189,8 +261,75 @@ def load_cobaya_chains(paths: Iterable[Path], *, burn_fraction: float = 0.0) -> 
     return ChainSet(names=names, values=values, weights=weights, source_files=source_files)
 
 
+def _import_getdist():
+    try:
+        from getdist import loadMCSamples  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("GetDist is required; install the 'inference' extra") from exc
+    return loadMCSamples
+
+
+def load_getdist_samples(directory: Path, *, burn_fraction: float = 0.0):
+    """Load the official Cobaya chain root using GetDist's native Cobaya support."""
+    if not 0.0 <= burn_fraction < 1.0:
+        raise ValueError("burn_fraction must lie in [0, 1)")
+    loader = _import_getdist()
+    root = str(Path(directory) / "chain")
+    return loader(root, no_cache=True, settings={"ignore_rows": float(burn_fraction)})
+
+
+def select_converged_burn_fraction(
+    directory: Path,
+    *,
+    candidates: Iterable[float] = (0.0, 0.05, 0.10, 0.20, 0.30),
+    max_rminus1: float = 0.01,
+) -> tuple[float, object, dict[str, object]]:
+    """Choose the earliest burn cut whose GetDist multivariate R-1 passes the declared threshold.
+
+    This replaces an unexplained fixed row cut with an auditable convergence rule. The
+    official ``chain.checkpoint`` is retained in provenance; GetDist independently checks
+    the released sample files used for the plotted posterior.
+    """
+    trials: list[dict[str, float | int]] = []
+    selected = None
+    selected_samples = None
+    for candidate in candidates:
+        fraction = float(candidate)
+        samples = load_getdist_samples(directory, burn_fraction=fraction)
+        rminus1 = float(samples.getGelmanRubin())
+        weights = np.asarray(samples.weights, dtype=float)
+        weighted_ess = float(weights.sum() ** 2 / np.dot(weights, weights))
+        trial = {
+            "burn_fraction": fraction,
+            "getdist_rminus1": rminus1,
+            "rows": int(samples.numrows),
+            "weighted_ess": weighted_ess,
+        }
+        trials.append(trial)
+        if np.isfinite(rminus1) and rminus1 <= max_rminus1:
+            selected = fraction
+            selected_samples = samples
+            break
+    if selected_samples is None or selected is None:
+        best = min(trials, key=lambda row: float(row["getdist_rminus1"]))
+        raise RuntimeError(
+            "Official chains failed the predeclared GetDist convergence threshold "
+            f"R-1 <= {max_rminus1}; best trial was {best}"
+        )
+    diagnostics = {
+        "selection_rule": "earliest candidate with GetDist multivariate R-1 <= threshold",
+        "max_rminus1": float(max_rminus1),
+        "selected_burn_fraction": selected,
+        "trials": trials,
+        "getdist_convergence_summary": selected_samples.getConvergeTests(
+            what=("MeanVar", "GelmanRubin", "SplitTest", "CorrLengths")
+        ),
+    }
+    return selected, selected_samples, diagnostics
+
+
 def weighted_quantile(values: np.ndarray, weights: np.ndarray, probabilities: Iterable[float]) -> np.ndarray:
-    """Deterministic weighted quantiles with midpoint CDF convention."""
+    """Deterministic weighted quantiles with midpoint-CDF convention."""
     x = np.asarray(values, dtype=float)
     w = np.asarray(weights, dtype=float)
     q = np.asarray(tuple(probabilities), dtype=float)

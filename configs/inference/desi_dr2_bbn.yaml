@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: desi_dr2_2025_bao_bbn_flat_lcdm
 model:
   family: flat_lcdm
@@ -28,7 +28,30 @@ posterior_products:
   official_root: https://data.desi.lbl.gov/public/papers/y3/bao-cosmo-params/cobaya
   bao_only: base/desi-bao-all
   bao_bbn: base/desi-bao-all_schoneberg2024-bbn
-  use: marginalized posterior contours and posterior-predictive histories
+  use: marginalized posterior contours and posterior-predictive checks
+  metadata_products:
+    - chain.checkpoint
+    - chain.covmat
+    - chain.updated.yaml
+  metadata_note: >-
+    The DESI chain data model documents chain.checkpoint and chain.covmat for standard runs and
+    an input.yaml or updated.yaml configuration product. The DR2 chain products used here expose
+    chain.updated.yaml; no undocumented margestats or progress files are assumed.
+chain_processing:
+  engine: GetDist
+  burn_selection: earliest_candidate_passing_multivariate_R_minus_1
+  candidate_burn_fractions: [0.0, 0.05, 0.10, 0.20, 0.30]
+  maximum_R_minus_1: 0.01
+  note: An explicit command-line burn override is permitted only if it also passes the same convergence threshold.
+published_reproduction_benchmark:
+  source: DESI DR2 Results II Table 5 and Eqs. 17, 19
+  bao_only:
+    omega_m: {mean: 0.2975, sigma: 0.0086}
+    h_r_drag_Mpc: {mean: 101.54, sigma: 0.73}
+    correlation_omega_m_h_r_drag: -0.92
+  bao_bbn:
+    omega_m: {mean: 0.2977, sigma: 0.0086}
+    H0_km_s_Mpc: {mean: 68.51, sigma: 0.58}
 release_overlap_policy:
   desi_dr1_dr2_independent: false
   later_2026_lya_update_combined: false
@@ -40,12 +63,13 @@ figure_policy:
   main_panels:
     - posterior_omega_m_h_rd_bao_only
     - posterior_omega_m_H0_bao_plus_bbn
-    - posterior_predictive_low_z_expansion
-    - camb_species_fractions
+    - full_covariance_posterior_predictive_whitened_residuals
+    - camb_species_fractions_and_characteristic_epochs
   supplementary:
-    - q_and_w_tot
+    - posterior_acceleration_transition
     - aubourg_vs_camb_sound_horizon
   epistemic_labels:
-    posterior: data_constrained
-    expansion_history: model_implied
+    posterior: data_constrained_standard_cosmology_reproduction
+    posterior_predictive: data_model_consistency_check
     high_redshift_history: model_extrapolated_from_calibrated_flat_lcdm
+    scpc_status: comparator_only_not_scpc_fit

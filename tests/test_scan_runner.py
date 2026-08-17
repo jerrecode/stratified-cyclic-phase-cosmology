@@ -4,7 +4,6 @@ from pathlib import Path
 
 from scpc.scans.runner import run_background_scan
 
-
 SMOKE_CONFIG = Path("configs/scans/stage1_smoke.yaml")
 
 

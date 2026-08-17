@@ -5,7 +5,6 @@ import pytest
 
 from scpc.visualization.scans import plot_scan_outcome_map
 
-
 FIELDNAMES = ["coordinates", "status", "outcome", "failure_class"]
 
 

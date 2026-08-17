@@ -1,0 +1,59 @@
+\section{Layered topology and higher-dimensional demonstrator}
+\subsection{$S^4$ foliation versus cyclic FLRW}
+The round four-sphere has the Riemannian metric
+\begin{equation}
+d\ell^2=R^2\left(d\chi^2+\sin^2\chi\,d\Omega_3^2\right),\qquad 0\le\chi\le\pi.
+\end{equation}
+Each fixed-$\chi$ leaf is an $S^3$ with areal radius
+\begin{equation}
+A(\chi)=R\sin\chi.
+\end{equation}
+Its increase from zero to $R$ and decrease back to zero is a statement about a spatial foliation. It is not a cosmological expansion followed by contraction because $\chi$ is spatial in this geometry and no Lorentzian evolution equation has been supplied.
+
+The global topology also differs. If a regular Lorentzian closed-FLRW solution has $a(t)>0$ throughout and time is periodically identified, its topology is $S^3\times S^1$, not $S^4$. Without periodic time identification it is $S^3\times I$. Collapsing $S^3$ leaves at endpoints can produce a smooth $S^4$ only in a properly regular Euclidean construction; a Lorentzian endpoint with $a=0$ is ordinarily a big-bang or big-crunch singularity rather than a smooth pole by analogy.
+
+\IfFileExists{generated/s4_foliation.png}{
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.92\linewidth]{generated/s4_foliation.png}
+\caption{Exact meridional schematic of a round $S^4$ foliated by $S^3$ leaves. The chord in the left panel is only a two-dimensional representation of an $S^3$ leaf; the right panel gives the exact areal-radius law. The two branches are geometry, not expansion followed by contraction in time.}
+\label{fig:s4-foliation}
+\end{figure}}{}
+
+\subsection{Causal scalar propagation on simultaneous layers}
+To make the statement that all spatial leaves exist simultaneously precise without inventing a gravity theory, we use the fixed $4+1$ dimensional spacetime
+\begin{equation}
+ds^2=-dt^2+R^2\left(d\chi^2+\sin^2\chi\,d\Omega_3^2\right)
+\end{equation}
+and an $S^3$-invariant test scalar $\varphi(t,\chi)$. With
+$U(\varphi)=m^2\varphi^2/2+\lambda\varphi^4/4$, its equation is
+\begin{equation}
+\partial_t^2\varphi+\gamma\partial_t\varphi-
+\frac{1}{R^2\sin^3\chi}\partial_\chi\!\left(\sin^3\chi\,\partial_\chi\varphi\right)
++m^2\varphi+\lambda\varphi^3=0.
+\end{equation}
+Regularity gives zero radial flux at both poles. The finite-volume cell measure is evaluated exactly,
+\begin{equation}
+w_i=\int_{\chi_{i-1/2}}^{\chi_{i+1/2}}\sin^3\chi\,d\chi
+=\left[-\cos\chi+\frac13\cos^3\chi\right]_{\chi_{i-1/2}}^{\chi_{i+1/2}},
+\end{equation}
+and the face flux is proportional to
+$\sin^3\chi_{i+1/2}(\varphi_{i+1}-\varphi_i)/\Delta\chi$. For $\gamma=0$ the energy diagnostic uses the same face-gradient quadratic form as the discrete Laplacian. The continuum expression is
+\begin{equation}
+E=2\pi^2R^4\int_0^\pi d\chi\,\sin^3\chi\left[
+\frac12\dot\varphi^2+\frac{(\partial_\chi\varphi)^2}{2R^2}+U(\varphi)\right].
+\end{equation}
+This matching between operator and diagnostic is essential; an unrelated pointwise gradient would not test conservation of the semi-discrete system.
+
+\IfFileExists{generated/layered_propagation.png}{
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.96\linewidth]{generated/layered_propagation.png}
+\caption{Causal propagation of an $S^3$-invariant scalar pulse across the fixed $S^4$ radial coordinate. The heat map and selected profiles show the test field, while the lower-right panel reports the finite-volume energy diagnostic constructed from the same face operator as the Laplacian. This is a fixed-background field calculation; it contains no gravitational backreaction and is not a cosmological solution.}
+\label{fig:layered-propagation}
+\end{figure}}{}
+
+\IfFileExists{generated/layered_summary.tex}{\input{generated/layered_summary.tex}}{}
+
+\subsection{Why a fully interacting $4+1$ model is not yet computed}
+Mass-energy cannot consistently ``gravitate on every layer'' until the model specifies at least a five-dimensional action, the five-dimensional Planck scale, field content and couplings, topology and boundary conditions, and a gauge/constraint formulation. A legitimate numerical-relativity implementation would evolve the spatial metric and extrinsic curvature while enforcing Hamiltonian and momentum constraints. The present four-dimensional potential cannot uniquely determine those ingredients, and fitting unspecified forces to manufacture a stable configuration would be circular. The fixed-background equation above is therefore the sharp boundary of what follows from the currently declared higher-dimensional definitions.

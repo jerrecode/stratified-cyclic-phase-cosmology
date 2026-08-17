@@ -10,7 +10,6 @@ from scpc.models.phase import PeriodicPotential, SCPCParameters, SCPCSolution
 from scpc.scans.errors import ResultIntegrityError
 from scpc.scans.outcomes import assess_solution
 
-
 SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
 
 

@@ -13,7 +13,6 @@ from scpc.scans.identity import canonical_run_identity
 from scpc.scans.outcomes import OutcomeClass, assess_solution
 from scpc.scans.runner import run_background_scan
 
-
 SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
 
 

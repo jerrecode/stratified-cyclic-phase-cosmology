@@ -9,7 +9,6 @@ import yaml
 import scpc.scans.runner as runner
 from scpc.scans.errors import OutputSerializationError, ResultIntegrityError
 
-
 SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
 
 

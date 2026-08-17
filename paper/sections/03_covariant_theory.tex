@@ -7,4 +7,22 @@ A periodic stratification potential is parameterized as
 \begin{equation}
 V(\phi)=V_{\rm off}+V_0\left[1-\cos\left(\frac{N_s\phi}{f}\right)\right].
 \end{equation}
-Variation gives Einstein's equation with ordinary matter, radiation, and the scalar stress-energy tensor. The canonical baseline has a controlled GR limit and no higher-derivative degrees of freedom. It is deliberately minimal and may fail to generate a viable cycle.
+Here $[\phi]=[f]=\mathrm{mass}$, $[V_0]=[V_{\rm off}]=\mathrm{mass}^4$, and $N_s$ is a positive integer. Variation with respect to the metric gives
+\begin{align}
+\Mpl^2G_{\mu\nu}&=T^{(m)}_{\mu\nu}+T^{(r)}_{\mu\nu}+T^{(\phi)}_{\mu\nu},\\
+T^{(\phi)}_{\mu\nu}&=\nabla_\mu\phi\nabla_\nu\phi-g_{\mu\nu}\left[\frac12(\nabla\phi)^2+V(\phi)\right],
+\end{align}
+and variation with respect to $\phi$ gives
+\begin{equation}
+\Box\phi-V_{,\phi}=0,\qquad
+V_{,\phi}=\frac{N_sV_0}{f}\sin\left(\frac{N_s\phi}{f}\right).
+\end{equation}
+Minimal coupling and the matter equations imply $\nabla_\mu T^{\mu\nu}_{(i)}=0$ for each noninteracting component. This conservation law is a consequence of diffeomorphism invariance rather than an optional numerical closure.
+
+For any null vector $n^\mu$, the canonical scalar obeys
+\begin{equation}
+T^{(\phi)}_{\mu\nu}n^\mu n^\nu=(n^\mu\nabla_\mu\phi)^2\ge0.
+\end{equation}
+Consequently the baseline cannot use scalar null-energy-condition violation to obtain a spatially flat regular bounce. The model has a controlled GR limit and no higher-derivative degrees of freedom, but those virtues also make its bounce mechanism highly constrained.
+
+None of $V_{\rm off}$, $V_0$, or $f$ is derived by the action itself. $V_{\rm off}$ is a renormalized vacuum-energy parameter; changing it to produce a desired cycle is a tuning, not a derivation. $N_s$ can be discrete by definition, but its value is not fixed by four-dimensional covariance. Computing these quantities from more fundamental data would require an additional microscopic symmetry or ultraviolet completion.

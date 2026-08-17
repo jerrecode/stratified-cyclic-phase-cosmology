@@ -19,5 +19,5 @@ def test_output_inventory_records_relative_paths_sizes_and_hashes(tmp_path) -> N
     inventory = build_output_inventory([first, second], relative_to=tmp_path)
 
     assert [item["path"] for item in inventory] == ["a.txt", "b.txt"]
-    assert inventory[0]["size_bytes"] == len("alpha".encode())
+    assert inventory[0]["size_bytes"] == len(b"alpha")
     assert inventory[0]["sha256"] == sha256_file(second)

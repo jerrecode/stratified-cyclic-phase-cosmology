@@ -6,7 +6,6 @@ import yaml
 import scpc.scans.runner as runner
 from scpc.visualization.scans import validate_outcome_map_coordinates
 
-
 SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
 SMOKE_CONFIG = Path("configs/scans/stage1_smoke.yaml")
 SMOKE_BASE = Path("configs/scans/stage1_smoke_base.yaml")

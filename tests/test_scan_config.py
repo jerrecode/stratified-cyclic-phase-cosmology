@@ -6,7 +6,6 @@ import yaml
 
 from scpc.scans.config import validate_scan_config
 
-
 SCHEMA = "configs/scans/scan.schema.json"
 VALID_CONFIG = "configs/scans/stage1_smoke.yaml"
 
