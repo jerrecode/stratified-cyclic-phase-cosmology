@@ -49,6 +49,34 @@ jobs:
         run: scpc verify-background
       - name: Run Stage 1 smoke scan
         run: scpc scan-background
+      - name: Run deterministic resource-limit smoke scan
+        run: >-
+          scpc scan-background
+          --config configs/scans/stage1_resource_limit_smoke.yaml
+          --output results/stage1_resource_limit_smoke
+      - name: Assert resource-limit smoke semantics
+        shell: bash
+        run: |
+          python - <<'PY_ASSERT'
+          import csv
+          import json
+          from pathlib import Path
+
+          index = Path("results/stage1_resource_limit_smoke/scan_index.csv")
+          with index.open(newline="", encoding="utf-8") as handle:
+              rows = list(csv.DictReader(handle))
+          assert len(rows) == 1
+          row = rows[0]
+          assert row["status"] == "failed"
+          assert row["failure_class"] == "resource_limit_exceeded"
+          assert row["outcome"] == ""
+          assert row["termination_kind"] == ""
+          assert json.loads(row["termination_state_vector"]) is None
+          assert row["resource_limit_kind"] == "max_rhs_evaluations"
+          assert int(row["resource_limit_configured"]) == 1
+          assert int(row["resource_completed_count"]) == 1
+          assert int(row["resource_attempted_count"]) == 2
+          PY_ASSERT
       - name: Upload background verification
         if: always() && hashFiles('results/scpc_verification/**') != ''
         uses: actions/upload-artifact@v4
@@ -62,4 +90,11 @@ jobs:
         with:
           name: scpc-stage1-smoke-scan
           path: results/stage1_smoke_scan
+          if-no-files-found: error
+      - name: Upload resource-limit smoke scan
+        if: always() && hashFiles('results/stage1_resource_limit_smoke/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: scpc-stage1-resource-limit-smoke
+          path: results/stage1_resource_limit_smoke
           if-no-files-found: error
