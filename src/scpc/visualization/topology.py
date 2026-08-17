@@ -50,7 +50,7 @@ def plot_layered_propagation(result: dict[str, object], output: str | Path) -> N
     )
     axes[0, 0].set_xlabel("time")
     axes[0, 0].set_ylabel(r"$\chi$")
-    axes[0, 0].set_title("S$^3$-invariant scalar propagation on fixed $R\times S^4$")
+    axes[0, 0].set_title("S3-invariant scalar propagation on fixed R x S4")
     fig.colorbar(image, ax=axes[0, 0], label=r"$\varphi$")
 
     for fraction in (0.0, 0.25, 0.5, 0.75, 1.0):
