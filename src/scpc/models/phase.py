@@ -7,15 +7,15 @@ background-theory baseline, not a claim that stable cyclic solutions exist.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from numbers import Integral
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
 from scipy.integrate import solve_ivp
 from scipy.optimize import brentq
-
 
 DOMAIN_TERMINATION_KINDS = (
     "maximum_absolute_field",

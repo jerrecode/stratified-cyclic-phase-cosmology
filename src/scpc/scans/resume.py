@@ -24,7 +24,6 @@ from scpc.scans.termination_records import (
     termination_evidence_payload,
 )
 
-
 _DOMAIN_FIELD_TO_KIND = {
     "min_scale_factor": "minimum_scale_factor",
     "max_scale_factor": "maximum_scale_factor",

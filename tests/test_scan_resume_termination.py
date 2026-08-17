@@ -13,7 +13,6 @@ from scpc.scans.termination_records import (
     write_content_addressed_termination_record,
 )
 
-
 SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
 
 

@@ -6,7 +6,6 @@ import yaml
 
 import scpc.scans.runner as runner
 
-
 SCAN_SCHEMA = Path("configs/scans/scan.schema.json")
 
 
