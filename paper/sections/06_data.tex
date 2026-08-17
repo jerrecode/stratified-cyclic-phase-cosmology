@@ -16,9 +16,11 @@ BAO alone constrains the ruler combination
 with late-time shape parameters; it does not separately determine $H_0$ and $r_d$. The BBN calibration enters as a prior on $\omega_b=\Omega_bh^2$, using the Sch\"oneberg PRyMordial determination adopted by DESI, and $r_d$ is then calculated under the declared standard early-Universe assumptions \cite{schoneberg2024}. It is therefore misleading to draw BBN as if it were a direct $r_d$ measurement in the $(H_0,r_d)$ plane.
 
 \subsection{Posterior reproduction and convergence}
-Publication posterior plots use the official DESI DR2 Cobaya MCMC chain release rather than inverse-Jacobian errors from a local optimizer \cite{cobaya,desi2025dr2}. GetDist is used for convergence tests and marginalized two-dimensional densities \cite{getdist}. The reproduction downloads and checksums the four sample files together with the documented release-side checkpoint, proposal covariance, and updated Cobaya configuration. Instead of applying an unexplained fixed burn fraction, the pipeline tests a predeclared sequence of candidate cuts and retains the earliest one satisfying the multivariate GetDist $R-1\le0.01$ criterion. The selected cut and full convergence summary are serialized with each result.
+Publication posterior plots use the official DESI DR2 Cobaya MCMC chain release rather than inverse-Jacobian errors from a local optimizer \cite{cobaya,desi2025dr2}. GetDist is used for convergence tests and marginalized two-dimensional densities \cite{getdist}. The publication workflow downloads the four sample files together with the documented release-side checkpoint, proposal covariance, and updated Cobaya configuration. Before inference, the prefetch stage requires both the pinned byte length and SHA-256 digest of every selected chain and metadata product; the Python report independently serializes the observed hashes, paths, byte counts, and source URLs. This makes accidental upstream mutation or a truncated cached file a hard failure rather than an unrecorded analysis change. Instead of applying an unexplained fixed burn fraction, the pipeline tests a predeclared sequence of candidate cuts and retains the earliest one satisfying the multivariate GetDist $R-1\le0.01$ criterion. The selected cut and full convergence summary are serialized with each result.
 
-CAMB supplies $r_d$, BAO distances for the independent MAP regression, and the high-redshift species densities, including the momentum-integrated massive-neutrino contribution \cite{camb2000,camb2026}. The legacy Aubourg fitting formula is evaluated only as a supplementary backend cross-check and never substitutes for CAMB in the calibrated inference \cite{aubourg2015}. The later DESI 2026 Lyman-$\alpha$ AP+BAO analysis is tracked separately and is not inserted into the pinned 2025 Results I/II covariance without a release-native joint likelihood or covariance \cite{desi2026iv}.
+Compressed Cobaya rows carry nonuniform weights. Any finite set of CAMB posterior evaluations used for a figure is therefore chosen at deterministic, equally spaced positions in cumulative posterior weight, not by equally spaced MCMC row number. Repeated selections are represented by their multiplicity. Marginalized constraints themselves continue to use the complete weighted released chains.
+
+CAMB supplies $r_d$, BAO distances for the independent MAP regression and posterior residual diagnostic, and the high-redshift species densities, including the momentum-integrated massive-neutrino contribution \cite{camb2000,camb2026}. The legacy Aubourg fitting formula is evaluated only as a supplementary backend cross-check and never substitutes for CAMB in the calibrated inference \cite{aubourg2015}. The later DESI 2026 Lyman-$\alpha$ AP+BAO analysis is tracked separately and is not inserted into the pinned 2025 Results I/II covariance without a release-native joint likelihood or covariance \cite{desi2026iv}.
 
 \subsection{Statistical interpretation}
 For $n$ measurements and $p$ fitted parameters we report $\nu=n-p$, the upper-tail goodness-of-fit probability, and
@@ -28,6 +30,18 @@ For $n$ measurements and $p$ fitted parameters we report $\nu=n-p$, the upper-ta
 \mathrm{BIC}&=\chi^2+p\ln n.
 \end{align}
 A $p$-value is not the probability that a model is true, and information criteria compare only the declared candidate set. Local inverse-Jacobian parameter errors are used solely for deterministic likelihood validation; they are unreliable at a parameter bound or along a strongly non-Gaussian degeneracy. Posterior constraints quoted as inference results come from released MCMC samples. A false-positive probability $\alpha$ is meaningful only for a predeclared test, while a false-negative probability additionally requires a specified alternative.
+
+For the posterior residual diagnostic we write $C=LL^T$ and
+\begin{equation}
+\mathbf r_w(\theta)=L^{-1}[\mathbf m(\theta)-\mathbf d],\qquad
+T_{\rm obs}(\theta)=\mathbf r_w^T\mathbf r_w.
+\end{equation}
+The displayed component intervals are posterior distributions of $\mathbf r_w(\theta)$ evaluated with exact CAMB predictions. A Cholesky component is basis- and row-order-dependent: component $i$ mixes rows $1,\ldots,i$, so its short row label is an ordering aid rather than an independent residual for one observable. As a separate Bayesian model check we report
+\begin{equation}
+p_{\rm PPC}=\int d\theta\,p(\theta\mid\mathbf d)\,
+\Pr\!\left[T_{\rm rep}(\theta)\ge T_{\rm obs}(\theta)\mid\theta\right],
+\end{equation}
+where a replicated Gaussian BAO vector obeys $\mathbf d_{\rm rep}\sim\mathcal N[\mathbf m(\theta),C]$ and therefore $T_{\rm rep}\sim\chi^2_n$ for fixed $\theta$. Posterior-predictive tail probabilities are generally conservative because the observed data enter both the posterior and the discrepancy; they are not interchangeable with the frequentist $p_{\rm gof}$ of the separately predeclared MAP validation.
 
 \subsection{Measurement-to-model interface}
 The repository tracks datasets by the prediction they require rather than by project name alone. This prevents a public dataset from being treated as constraining \SCPC{} before the corresponding observable has actually been derived.
